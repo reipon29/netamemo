@@ -20,8 +20,15 @@ svg{display:block}
 .grp h2{font-size:20px;margin:22px 4px 8px}
 .card{background:var(--card);border-radius:12px;overflow:hidden}
 .row{display:block;width:100%;text-align:left;border:0;background:none;padding:11px 16px;position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-.row+.row::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--line)}
+.sw{position:relative}
+.sw .row{background:var(--card);z-index:1;touch-action:pan-y}
+.sw .row.open{border-radius:0 14px 14px 0}
+.sw+.sw .row::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--line)}
 .row:active{background:var(--hl)}
+.acts{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;gap:4px;padding:0 8px 0 6px}
+.act{display:flex;flex-direction:column;align-items:center;gap:3px;border:0;background:none;padding:0;width:58px;font-size:11px;color:var(--muted)}
+.act i{display:flex;align-items:center;justify-content:center;width:54px;height:32px;border-radius:999px;background:var(--c);color:#fff}
+.act:active{opacity:.6}
 .rt{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rs{font-size:15px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rd{color:var(--fg);opacity:.75;margin-right:8px}

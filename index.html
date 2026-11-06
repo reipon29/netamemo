@@ -96,17 +96,34 @@ const sw=s=>[...s].reduce((a,c)=>a+cw(c),0);
 function padTo(s,w){const d=w-sw(s);return s+'　'.repeat(Math.max(0,Math.floor(d/2)))+(d>0&&d%2?' ':'')}
 const cleanName=s=>String(s).replace(/[：:\n]/g,'').trim();
 
+// 「A ああああ」のように半角スペースで区切った台本。2回以上出てくる名前（8文字まで）だけを話者とみなす。
+const SP_RE=/^([^\s：:]{1,8}) +(\S.*)$/;
+function spaceNames(lines){
+  const ls=lines.filter(s=>s.trim()),cnt={};
+  for(const s of ls){const m=s.match(SP_RE);if(m)cnt[m[1]]=(cnt[m[1]]||0)+1}
+  const names=Object.keys(cnt).filter(k=>cnt[k]>=2);
+  if(!names.length||names.length>8)return null;
+  const hit=names.reduce((a,k)=>a+cnt[k],0);
+  return hit>=3&&hit>=ls.length*.5?new Set(names):null;
+}
+function matchLine(raw,spNames){
+  const m=raw.match(RE);if(m)return m;
+  if(!spNames)return null;
+  const s=raw.match(SP_RE);return s&&spNames.has(s[1])?s:null;
+}
+
 function parseScript(text,meta=[]){
   const sc={head:'',speakers:[],lines:[]},by={},head=[];
+  const rows=text.split(/\r?\n/),spNames=rows.some(s=>RE.test(s))?null:spaceNames(rows);
   const add=(name,color)=>{
     if(!by[name]){const p={id:uid(),name,color:color||COLORS.find(c=>!sc.speakers.some(s=>s.color===c))||COLORS[sc.speakers.length%COLORS.length]};by[name]=p;sc.speakers.push(p)}
     return by[name].id;
   };
   (meta||[]).forEach(m=>m&&m.name&&add(m.name,m.color));
-  for(const raw of text.split(/\r?\n/)){
+  for(const raw of rows){
     const last=sc.lines[sc.lines.length-1];
     if(last&&/^[ \t　]/.test(raw)&&raw.trim()){last.text+='\n'+raw.replace(/^[ \t　]+/,'');continue}
-    const m=raw.match(RE);
+    const m=matchLine(raw,spNames);
     if(m){sc.lines.push({id:uid(),sp:add(m[1]),text:m[2]});continue}
     if(!last){head.push(raw);continue}
     if(raw.trim())last.text+='\n'+raw.trim();
@@ -129,9 +146,9 @@ function serialize(sc){
   return out.join('\n');
 }
 function looksLikeScript(text){
-  const ls=text.split(/\r?\n/).filter(s=>s.trim());
+  const rows=text.split(/\r?\n/),ls=rows.filter(s=>s.trim());
   const hit=ls.filter(s=>RE.test(s)).length;
-  return hit>=3&&hit>=ls.length*.5;
+  return hit>=3&&hit>=ls.length*.5||!hit&&!!spaceNames(rows);
 }
 // 旧「漫才台本エディタ」形式からの変換
 function fromScript(s){
@@ -217,6 +234,7 @@ function bucket(t){
   return d.getFullYear()===new Date().getFullYear()?`${d.getMonth()+1}月`:`${d.getFullYear()}年${d.getMonth()+1}月`;
 }
 function renderList(){
+  openRow=null;swp=null;
   const q=$q.value.trim().toLowerCase();
   const all=live(),arr=all.filter(n=>!q||n.text.toLowerCase().includes(q)).sort((a,b)=>b.updated-a.updated);
   const groups=[],at={};
@@ -240,8 +258,22 @@ function rowEl(n){
   t.append(title);
   const s=document.createElement('div');s.className='rs';
   const d=document.createElement('span');d.className='rd';d.textContent=fmtShort(n.updated);
-  s.append(d,preview);b.append(t,s);return b;
+  s.append(d,preview);b.append(t,s);
+  const w=document.createElement('div');w.className='sw';
+  const acts=document.createElement('div');acts.className='acts';
+  acts.innerHTML=
+    `<button class="act" data-act="pin" style="--c:#f59f00"><i>${n.pinned?ICON.unpin:ICON.pin}</i>${n.pinned?'解除':'ピン'}</button>`+
+    `<button class="act" data-act="share" style="--c:#3b82f6"><i>${ICON.share}</i>共有</button>`+
+    `<button class="act" data-act="del" style="--c:#ef4444"><i>${ICON.del}</i>削除</button>`;
+  w.append(acts,b);return w;
 }
+const svg=p=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICON={
+  pin:svg('<path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v6"/>'),
+  unpin:svg('<path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v6M3 3l18 18"/>'),
+  share:svg('<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/>'),
+  del:svg('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')
+};
 $q.addEventListener('input',renderList);
 $('#btnNew').addEventListener('click',()=>goNote(newNote(),true));
 
@@ -256,10 +288,52 @@ const lpCancel=()=>{if(lp){clearTimeout(lp.t);lp=null}};
 $notes.addEventListener('pointermove',e=>{if(lp&&Math.hypot(e.clientX-lp.x,e.clientY-lp.y)>8)lpCancel()});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>$notes.addEventListener(ev,lpCancel));
 $notes.addEventListener('click',e=>{
+  const a=e.target.closest('.act');
+  if(a){
+    const n=notes[a.closest('.sw').querySelector('.row').dataset.id];closeSwipe(true);if(!n)return;
+    if(a.dataset.act==='pin'){n.pinned=!n.pinned;persistNow();renderList();toast(n.pinned?'ピン留めしました':'ピン留めを解除しました')}
+    else if(a.dataset.act==='share')shareText(n);
+    else{trash(n);renderList()}
+    return;
+  }
   const r=e.target.closest('.row');if(!r)return;
   if(lpFired){lpFired=false;return}
+  if(swiped){swiped=false;return}
+  if(openRow){closeSwipe();return}
   const n=notes[r.dataset.id];if(n)goNote(n);
 });
+
+// 左にスワイプで ピン留め・共有・削除
+let swp=null,openRow=null,swiped=false;
+const actW=r=>r.previousElementSibling.offsetWidth;
+function setX(r,x,anim){r.style.transition=anim?'transform .22s ease-out':'none';r.style.transform=x?`translateX(${x}px)`:'';r.classList.toggle('open',!!x)}
+function closeSwipe(now){if(openRow){setX(openRow,0,!now);openRow=null}}
+$notes.addEventListener('pointerdown',e=>{
+  const r=e.target.closest('.row');swiped=false;
+  if(openRow&&openRow!==r&&!e.target.closest('.act')){closeSwipe();swiped=!!r}
+  swp=r&&e.isPrimary?{r,x:e.clientX,y:e.clientY,base:r===openRow?-actW(r):0,dx:0,on:false}:null;
+});
+$notes.addEventListener('pointermove',e=>{
+  if(!swp)return;
+  const dx=e.clientX-swp.x,dy=e.clientY-swp.y;
+  if(!swp.on){
+    if(Math.abs(dy)>10&&Math.abs(dy)>Math.abs(dx)){swp=null;return}
+    if(Math.abs(dx)<10)return;
+    swp.on=true;lpCancel();try{swp.r.setPointerCapture(e.pointerId)}catch{}
+  }
+  const w=actW(swp.r),x=swp.base+dx;
+  swp.dx=dx;setX(swp.r,Math.min(0,x<-w?-w+(x+w)/3:x),false);
+});
+function swipeEnd(cancel){
+  if(!swp)return;const s=swp;swp=null;if(!s.on)return;
+  swiped=true;setTimeout(()=>swiped=false,350);
+  const w=actW(s.r),open=!cancel&&s.base+s.dx<-w/2;
+  if(open){if(openRow&&openRow!==s.r)closeSwipe();openRow=s.r;setX(s.r,-w,true)}
+  else{setX(s.r,0,true);if(openRow===s.r)openRow=null}
+}
+$notes.addEventListener('pointerup',()=>swipeEnd(false));
+$notes.addEventListener('pointercancel',()=>swipeEnd(true));
+addEventListener('scroll',()=>{if(openRow&&!swp)closeSwipe()},{passive:true});
 function rowMenu(id){
   const n=notes[id];if(!n)return;
   sheet(titleOf(n).title,[
