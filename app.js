@@ -57,6 +57,10 @@ function matchLine(raw,spNames){
   const s=raw.match(SP_RE);return s&&spNames.has(s[1])?s:null;
 }
 
+function lastSpeakers(){
+  const n=live().filter(n=>n!==cur&&n.mode==='script'&&Array.isArray(n.spk)&&n.spk.some(p=>p&&p.name)).sort((a,b)=>b.updated-a.updated)[0];
+  return n?n.spk.filter(p=>p&&p.name).map(p=>({name:cleanName(p.name)||'?',color:p.color})):[];
+}
 function parseScript(text,meta=[]){
   const sc={head:'',speakers:[],lines:[]},by={},head=[];
   const rows=text.split(/\r?\n/),spNames=rows.some(s=>RE.test(s))?null:spaceNames(rows,true);
@@ -74,7 +78,8 @@ function parseScript(text,meta=[]){
     if(raw.trim())last.text+='\n'+raw.trim();
   }
   sc.head=head.join('\n').replace(/\s+$/,'');
-  if(!sc.speakers.length){add('A');add('B')}
+  // 話者がいないとき（新しい台本など）は、最後に使った台本の話者を使う
+  if(!sc.speakers.length){const prev=lastSpeakers();if(prev.length)prev.forEach(p=>add(p.name,p.color));else{add('A');add('B')}}
   if(!sc.lines.length)sc.lines.push({id:uid(),sp:sc.speakers[0].id,text:''});
   return sc;
 }
@@ -145,7 +150,7 @@ function openNote(n){
   scrollTo(0,0);
 }
 function setMode(m){
-  cur.mode=m;document.documentElement.dataset.mode=m;
+  cur.mode=m;
   $('#seg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));
   const script=m==='script';
   $memo.hidden=script;$('#scriptWrap').hidden=!script;$('#spbar').hidden=!script;
@@ -566,16 +571,6 @@ $('#file').addEventListener('change',async e=>{
   else toast(added.length?`${added.length}件読み込みました`:'新しいメモはありませんでした');
   if(added.length===1&&!added[0].deleted)goNote(added[0]);else renderList();
 });
-
-/* ---------- キーボードを出しているときの画面位置 ---------- */
-(function(){
-  const vv=window.visualViewport,root=document.documentElement;
-  // 見えている範囲の上端（キーボードが出ると、iPhoneは見える範囲ごとずらすことがある）
-  const place=()=>root.style.setProperty('--vvt',(vv?Math.max(0,Math.round(vv.offsetTop)):0)+'px');
-  if(vv){vv.addEventListener('resize',place);vv.addEventListener('scroll',place)}
-  addEventListener('resize',place);addEventListener('scroll',place,{passive:true});
-  document.addEventListener('focusin',()=>setTimeout(place,300));place();
-})();
 
 /* ---------- 起動 ---------- */
 (function init(){
