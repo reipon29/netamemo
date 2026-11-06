@@ -107,7 +107,7 @@ function fromScript(s){
 function validNote(n){
   if(!n||typeof n.text!=='string')return null;
   const t=Date.now();
-  return{id:String(n.id||uid()),text:n.text,mode:n.mode==='script'?'script':'memo',spk:Array.isArray(n.spk)?n.spk:[],pinned:!!n.pinned,created:n.created||n.updated||t,updated:n.updated||t,...(typeof n.html==='string'?{html:n.html}:{}),...(Array.isArray(n.imgs)&&n.imgs.length?{imgs:n.imgs.filter(x=>typeof x==='string')}:{}),...(n.deleted?{deleted:n.deleted}:{})};
+  return{id:String(n.id||uid()),text:n.text,mode:n.mode==='script'?'script':'memo',spk:Array.isArray(n.spk)?n.spk:[],pinned:!!n.pinned,created:n.created||n.updated||t,updated:n.updated||t,...(typeof n.html==='string'?{html:n.html}:{}),...(Array.isArray(n.sh)?{sh:n.sh}:{}),...(Array.isArray(n.imgs)&&n.imgs.length?{imgs:n.imgs.filter(x=>typeof x==='string')}:{}),...(n.deleted?{deleted:n.deleted}:{})};
 }
 
 /* ---------- 画面遷移 ---------- */
@@ -149,12 +149,15 @@ function openNote(n){
   scrollTo(0,0);
 }
 function setMode(m){
-  cur.mode=m;document.documentElement.dataset.mode=m;
+  cur.mode=m;document.documentElement.dataset.mode=m;closePanel();
   $('#seg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));
   const script=m==='script';
   $memo.hidden=script;$('#scriptWrap').hidden=!script;$('#speakers').hidden=!script;
-  if(script){sc=parseScript(cur.text,cur.spk);renderScript()}
-  else{sc=null;closePanel();renderRich()}
+  if(script){sc=parseScript(cur.text,cur.spk);applySh(sc,cur.sh);renderScript()}
+  else{
+    if(cur.html==null&&cur.sh&&sc)cur.html=scriptHtml(sc);
+    sc=null;renderRich();
+  }
 }
 $('#seg').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||b.dataset.m===cur.mode)return;
@@ -303,8 +306,32 @@ function autosize(t){
 addEventListener('resize',()=>document.querySelectorAll('#vNote textarea').forEach(autosize));
 
 /* ---------- 台本エディタ ---------- */
+// セリフは書式つきで編集できる。テキスト（n.text）は今まで通り「名前：セリフ」、書式は n.sh に行ごとに持つ
 let lastId=null,lastPos=0;
-function sync(){delete cur.html;cur.text=serialize(sc);cur.spk=sc.speakers.map(({name,color})=>({name,color}));touch(cur)}
+function sync(){
+  delete cur.html;cur.text=serialize(sc);cur.spk=sc.speakers.map(({name,color})=>({name,color}));
+  const sh=sc.lines.map(l=>l.h?{t:l.text,h:l.h}:0);
+  if(sh.some(Boolean))cur.sh=sh;else delete cur.sh;
+  touch(cur);
+}
+function applySh(sc,sh){
+  if(!Array.isArray(sh))return;
+  sc.lines.forEach((l,i)=>{const x=sh[i];if(x&&typeof x.h==='string'&&x.t===l.text)l.h=clean(x.h)});
+}
+// 台本→メモに切り替えたとき、セリフの書式をメモにも引き継ぐ
+function scriptHtml(sc){
+  const name=id=>(sc.speakers.find(s=>s.id===id)||sc.speakers[0]).name;
+  const max=Math.max(1,...sc.lines.map(l=>sw(name(l.sp))));
+  const indent=padTo('',max+2),out=[];
+  if(sc.head)out.push(textToHtml(sc.head),'<div><br></div>');
+  for(const l of sc.lines){
+    const parts=(l.h||lineHtml(l.text)).split(/<br\s*\/?>/);
+    parts.forEach((p,i)=>out.push(`<div>${esc(i?indent:padTo(name(l.sp),max)+'：')}${p}</div>`));
+  }
+  return out.join('');
+}
+const lineHtml=t=>esc(t).replace(/\n/g,'<br>');
+const hasFmt=el=>!!el.querySelector('b,strong,i,em,u,s,strike,del,span,font,sub,sup');
 const spk=id=>sc.speakers.find(s=>s.id===id)||sc.speakers[0];
 const idx=id=>sc.lines.findIndex(l=>l.id===id);
 function nextSpeaker(id){const i=sc.speakers.findIndex(s=>s.id===id);return sc.speakers[(i+1)%sc.speakers.length].id}
@@ -317,7 +344,9 @@ function rowEls(ln){
   const n=document.createElement('span');n.className='n';n.textContent=s.name;
   const c=document.createElement('span');c.textContent='：';
   b.append(n,c);
-  const t=document.createElement('textarea');t.className='text';t.rows=1;t.value=ln.text;t.dataset.id=ln.id;t.setAttribute('enterkeyhint','next');
+  const t=document.createElement('div');t.className='text rich';t.contentEditable='true';t.dataset.id=ln.id;
+  t.setAttribute('enterkeyhint','next');t.setAttribute('role','textbox');t.setAttribute('autocapitalize','off');
+  t.innerHTML=ln.h||lineHtml(ln.text);
   return[b,t];
 }
 function renderScript(){
@@ -325,7 +354,6 @@ function renderScript(){
   $shead.value=sc.head;autosize($shead);
   renderChips();
   $script.replaceChildren(...sc.lines.flatMap(rowEls));
-  $script.querySelectorAll('.text').forEach(autosize);
 }
 function renderChips(){
   const box=$('#speakers');box.replaceChildren();
@@ -336,46 +364,80 @@ function refreshNames(){
   $script.querySelectorAll('.name').forEach(b=>{const ln=sc.lines[idx(b.dataset.id)];if(!ln)return;const s=spk(ln.sp);b.style.color=s.color;b.querySelector('.n').textContent=s.name});
   renderChips();
 }
-const taOf=id=>$script.querySelector(`textarea[data-id="${id}"]`);
+const taOf=id=>$script.querySelector(`.text[data-id="${id}"]`);
 const nameOf=id=>$script.querySelector(`.name[data-id="${id}"]`);
-function focusLine(id,pos){const t=taOf(id);if(!t)return;t.focus();pos=pos==null?t.value.length:pos;t.setSelectionRange(pos,pos)}
-function insertAfter(prevId,ln){const t=taOf(prevId);const els=rowEls(ln);if(t)t.after(...els);else $script.append(...els);autosize(els[1])}
+// 文字数で数えたカーソル位置（改行も1文字）
+function caretOffset(el){
+  const s=getSelection();if(!s.rangeCount||!el.contains(s.anchorNode))return 0;
+  const r=document.createRange();r.selectNodeContents(el);r.setEnd(s.anchorNode,s.anchorOffset);
+  let n=0;const f=r.cloneContents();
+  (function walk(x){for(const c of x.childNodes){if(c.nodeType===3)n+=c.length;else if(c.nodeName==='BR')n++;else walk(c)}})(f);
+  return n;
+}
+function textLen(el){let n=0;(function walk(x){for(const c of x.childNodes){if(c.nodeType===3)n+=c.length;else if(c.nodeName==='BR')n++;else walk(c)}})(el);return n}
+function setCaret(el,pos){
+  const r=document.createRange();let left=pos,done=false;
+  (function walk(x){for(const c of x.childNodes){if(done)return;
+    if(c.nodeType===3){if(c.length>=left){r.setStart(c,left);done=true;return}left-=c.length}
+    else if(c.nodeName==='BR'){if(left===0){r.setStartBefore(c);done=true;return}left--}
+    else walk(c)}})(el);
+  if(!done){r.selectNodeContents(el);r.collapse(false)}else r.collapse(true);
+  const s=getSelection();s.removeAllRanges();s.addRange(r);
+}
+function focusLine(id,pos){const t=taOf(id);if(!t)return;t.focus({preventScroll:false});setCaret(t,pos==null?1e9:pos)}
+function insertAfter(prevId,ln){const t=taOf(prevId);const els=rowEls(ln);if(t)t.after(...els);else $script.append(...els)}
 function removeRow(id){taOf(id)?.remove();nameOf(id)?.remove()}
+// 行の中身（HTML）から、テキストと書式を読み直す
+function updateLine(t){
+  const ln=sc.lines[idx(t.dataset.id)];if(!ln)return;
+  fixFormat(t);
+  ln.text=toText(t);ln.h=hasFmt(t)?t.innerHTML:null;
+}
 
 $shead.addEventListener('input',()=>{sc.head=$shead.value;autosize($shead);sync()});
 $script.addEventListener('input',e=>{
-  const t=e.target;if(!t.classList.contains('text'))return;
-  sc.lines[idx(t.dataset.id)].text=t.value;autosize(t);lastPos=t.selectionStart;sync();
+  const t=e.target.closest&&e.target.closest('.text');if(!t)return;
+  updateLine(t);lastPos=caretOffset(t);sync();
+});
+$script.addEventListener('paste',e=>{
+  if(!e.target.closest||!e.target.closest('.text'))return;
+  const d=e.clipboardData,txt=d&&d.getData('text/plain');if(txt==null)return;
+  e.preventDefault();document.execCommand('insertText',false,txt);
 });
 $script.addEventListener('focusin',e=>{
-  const t=e.target;if(!t.classList.contains('text'))return;
+  const t=e.target.closest&&e.target.closest('.text');if(!t)return;
   lastId=t.dataset.id;
   $script.querySelectorAll('.name.active').forEach(n=>n.classList.remove('active'));
   nameOf(lastId)?.classList.add('active');
 });
-['keyup','click','select'].forEach(ev=>$script.addEventListener(ev,e=>{if(e.target.classList.contains('text'))lastPos=e.target.selectionStart}));
+['keyup','click'].forEach(ev=>$script.addEventListener(ev,e=>{const t=e.target.closest&&e.target.closest('.text');if(t)lastPos=caretOffset(t)}));
 $script.addEventListener('keydown',e=>{
-  const t=e.target;if(!t.classList.contains('text'))return;
+  const t=e.target.closest&&e.target.closest('.text');if(!t)return;
   if(e.isComposing||e.keyCode===229)return;
-  const id=t.dataset.id,i=idx(id),ln=sc.lines[i];
+  const id=t.dataset.id,i=idx(id),ln=sc.lines[i],sel=getSelection();
   if(e.key==='Enter'&&!e.shiftKey){
     e.preventDefault();
-    const a=t.selectionStart,b=t.selectionEnd,after=t.value.slice(b);
-    ln.text=t.value.slice(0,a);t.value=ln.text;autosize(t);
-    const nl={id:uid(),sp:nextSpeaker(ln.sp),text:after};
+    // カーソルから後ろを次の行へ（書式ごと）
+    const r=sel.getRangeAt(0);r.deleteContents();
+    const tail=document.createRange();tail.setStart(r.startContainer,r.startOffset);tail.setEnd(t,t.childNodes.length);
+    const d=document.createElement('div');d.append(tail.extractContents());
+    if(!t.textContent&&!t.querySelector('br'))t.innerHTML='';
+    updateLine(t);fixFormat(d);
+    const nl={id:uid(),sp:nextSpeaker(ln.sp),text:toText(d),h:hasFmt(d)?d.innerHTML:null};
     sc.lines.splice(i+1,0,nl);insertAfter(id,nl);focusLine(nl.id,0);sync();
-  }else if(e.key==='Backspace'&&t.selectionStart===0&&t.selectionEnd===0&&i>0){
+  }else if(e.key==='Backspace'&&sel.isCollapsed&&caretOffset(t)===0&&i>0){
     e.preventDefault();
-    const prev=sc.lines[i-1],p=prev.text.length;
-    prev.text+=ln.text;sc.lines.splice(i,1);removeRow(id);
-    const pt=taOf(prev.id);pt.value=prev.text;autosize(pt);focusLine(prev.id,p);sync();
-  }else if(e.key==='ArrowUp'&&t.selectionStart===0&&i>0){e.preventDefault();focusLine(sc.lines[i-1].id)}
-  else if(e.key==='ArrowDown'&&t.selectionEnd===t.value.length&&i<sc.lines.length-1){e.preventDefault();focusLine(sc.lines[i+1].id,0)}
+    const prev=sc.lines[i-1],pt=taOf(prev.id),p=toText(pt).length;
+    if(pt.lastChild&&pt.lastChild.nodeName==='BR')pt.lastChild.remove();
+    pt.append(...t.childNodes);sc.lines.splice(i,1);removeRow(id);
+    updateLine(pt);focusLine(prev.id,p);sync();
+  }else if(e.key==='ArrowUp'&&caretOffset(t)===0&&i>0){e.preventDefault();focusLine(sc.lines[i-1].id)}
+  else if(e.key==='ArrowDown'&&caretOffset(t)>=textLen(t)&&i<sc.lines.length-1){e.preventDefault();focusLine(sc.lines[i+1].id,0)}
 });
 $script.addEventListener('click',e=>{const b=e.target.closest('.name');if(b)openLine(b.dataset.id)});
 
 let wasEditing=false;
-$('#speakers').addEventListener('pointerdown',e=>{wasEditing=!!document.activeElement&&document.activeElement.classList.contains('text');if(e.target.closest('.chip'))e.preventDefault()});
+$('#speakers').addEventListener('pointerdown',e=>{wasEditing=!!document.activeElement&&!!document.activeElement.closest('#script .text');if(e.target.closest('.chip'))e.preventDefault()});
 $('#speakers').addEventListener('click',e=>{
   const c=e.target.closest('.chip');if(!c)return;
   if(c.dataset.edit){openSpk();return}
@@ -505,6 +567,8 @@ async function forceUpdate(){
     const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
     if(reg)await reg.update().catch(()=>{});
     if(window.caches)for(const k of await caches.keys())await caches.delete(k);
+    // ブラウザ側の古いコピーも取り直しておく
+    await Promise.all(['./','index.html','style.css','app.js','manifest.json'].map(u=>fetch(u,{cache:'reload'}).catch(()=>{})));
   }catch{}
   location.reload();
 }
@@ -724,14 +788,17 @@ function renderRich(){
   updateBlank();
 }
 function updateBlank(){$memo.classList.toggle('blank',!$memo.textContent&&!$memo.querySelector('table,hr,li'))}
-function memoChanged(){
-  // 「標準」の色（目印の色）をテーマに合わせた色に置き換える
-  $memo.querySelectorAll('[style]').forEach(el=>{
+// 「標準」の色（目印の色）をテーマに合わせた色に置き換える
+function fixFormat(root){
+  root.querySelectorAll('[style]').forEach(el=>{
     if(el.style.color==='rgb(1, 2, 3)')el.style.color='var(--fg)';
     if(el.style.backgroundColor==='rgb(1, 2, 3)')el.style.backgroundColor='transparent';
     if(!el.getAttribute('style'))el.removeAttribute('style');
   });
-  $memo.querySelectorAll('span:not([style]):not([class])').forEach(el=>el.replaceWith(...el.childNodes));
+  root.querySelectorAll('span:not([style]):not([class])').forEach(el=>el.replaceWith(...el.childNodes));
+}
+function memoChanged(){
+  fixFormat($memo);
   updateBlank();
   const h=$memo.innerHTML;if(h===cur.html)return;
   cur.html=h;cur.text=toText($memo);touch(cur);
@@ -762,28 +829,57 @@ function caretEnd(el){
 function caretIn(el){const r=document.createRange();r.selectNodeContents(el);r.collapse(true);$memo.focus();const s=getSelection();s.removeAllRanges();s.addRange(r)}
 try{document.execCommand('defaultParagraphSeparator',false,'div')}catch{}
 
-let saved=null;
+let saved=null,savedEl=null;
+const hostOf=n=>{if(n&&n.nodeType===3)n=n.parentElement;return n&&n.closest?n.closest('#memo,#script .text'):null};
 document.addEventListener('selectionchange',()=>{
-  const s=getSelection();
-  if(s.rangeCount&&$memo.contains(s.anchorNode)){saved=s.getRangeAt(0).cloneRange();if(!$('#fpanel').hidden)updatePanel()}
+  const s=getSelection();if(!s.rangeCount)return;
+  const h=hostOf(s.anchorNode);
+  if(h){saved=s.getRangeAt(0).cloneRange();savedEl=h;if(!$('#fpanel').hidden)updatePanel()}
 });
+// いま書式をかける場所：メモなら本文、台本なら最後に触った行
+function edRoot(){
+  if(!cur)return null;
+  if(cur.mode!=='script')return $memo;
+  return savedEl&&$script.contains(savedEl)?savedEl:null;
+}
 function selEl(){
-  const s=getSelection();let n=s.rangeCount?s.anchorNode:saved&&saved.startContainer;
+  const root=edRoot();if(!root)return null;
+  const s=getSelection();let n=s.rangeCount&&root.contains(s.anchorNode)?s.anchorNode:saved&&saved.startContainer;
   if(n&&n.nodeType===3)n=n.parentElement;
-  return n&&$memo.contains(n)?n:null;
+  return n&&root.contains(n)?n:null;
 }
 function restoreSel(){
-  if(document.activeElement===$memo)return;
-  $memo.focus({preventScroll:true});
-  if(saved&&$memo.contains(saved.startContainer)){const s=getSelection();s.removeAllRanges();s.addRange(saved)}
-  else caretEnd($memo);
+  const root=edRoot();if(!root)return null;
+  if(document.activeElement===root)return root;
+  root.focus({preventScroll:true});
+  if(saved&&root.contains(saved.startContainer)){const s=getSelection();s.removeAllRanges();s.addRange(saved)}
+  else caretEnd(root);
+  return root;
+}
+function edited(root){
+  if(root===$memo)memoChanged();
+  else if(root&&sc){updateLine(root);sync()}
 }
 function exec(cmd,val,css){
-  restoreSel();
+  const root=restoreSel();if(!root){toast('書式をつけたいセリフをタップしてください');return false}
   try{document.execCommand('styleWithCSS',false,!!css)}catch{}
   const ok=document.execCommand(cmd,false,val??null);
   try{document.execCommand('styleWithCSS',false,false)}catch{}
-  memoChanged();return ok;
+  edited(root);return ok;
+}
+// 括弧を入れる（文字を選んでいたら、その文字を囲む）
+function bracket(o,c){
+  const ae=document.activeElement;
+  if(ae&&(ae.tagName==='TEXTAREA'||ae.tagName==='INPUT')&&ae.closest('#vNote')){
+    const a=ae.selectionStart,b=ae.selectionEnd,mid=ae.value.slice(a,b);
+    ae.setRangeText(o+mid+c,a,b,'end');if(!mid)ae.setSelectionRange(a+o.length,a+o.length);
+    ae.dispatchEvent(new Event('input',{bubbles:true}));return;
+  }
+  const root=restoreSel();if(!root){toast('入力したい場所をタップしてください');return}
+  const s=getSelection(),mid=s.toString();
+  document.execCommand('insertText',false,o+mid+c);
+  if(!mid&&s.modify)s.modify('move','backward','character');
+  edited(root);
 }
 const listOf=()=>{const el=selEl();const li=el&&el.closest('li');return li&&$memo.contains(li)?li.parentElement:null};
 function setList(kind){
@@ -821,10 +917,12 @@ const PANEL=[
     const r=document.createElement('div');r.className='fp-r';
     for(const[k,html,color,name]of btns){
       const b=document.createElement('button');b.dataset.k=k;b.innerHTML=html;
+      if(/^(b:|l:|x:hr|c:(outdent|indent|justify))/.test(k))b.classList.add('mo');
       if(color){b.className='cl'+(color==='none'?' none':'');if(color!=='none')b.style.background=color;b.setAttribute('aria-label',name)}
       r.append(b);
     }
     p.append(r);
+    if([...r.children].every(b=>b.classList.contains('mo'))){r.classList.add('mo');if(label)r.previousElementSibling.classList.add('mo')}
   }
 })();
 // ボタンを押してもキーボード（入力位置）が消えないようにする
@@ -840,7 +938,7 @@ $('#fpanel').addEventListener('click',e=>{
   else if(t==='fc')exec('foreColor',v,true);
   else if(t==='hc'){if(!exec('hiliteColor',v,true))exec('backColor',v,true)}
   else if(v==='hr')exec('insertHorizontalRule');
-  else if(v==='clear'){exec('removeFormat');setBlock('div')}
+  else if(v==='clear'){exec('removeFormat');if(cur.mode!=='script')setBlock('div')}
   updatePanel();
 });
 function updatePanel(){
@@ -861,10 +959,12 @@ $('#fbar').addEventListener('click',e=>{
   const b=e.target.closest('[data-f]');if(!b||!cur)return;
   const f=b.dataset.f;
   if(f==='panel'){$('#fpanel').hidden?openPanel():closePanel()}
+  else if(f==='kagi')bracket('「','」');
+  else if(f==='kakko')bracket('（','）');
   else if(f==='check')setList('check');
   else if(f==='table')tableMenu();
-  else if(f==='undo'||f==='redo'){restoreSel();document.execCommand(f);memoChanged()}
-  else if(f==='done'){closePanel();$memo.blur()}
+  else if(f==='undo'||f==='redo'){const r=restoreSel();if(r){document.execCommand(f);edited(r)}}
+  else if(f==='done'){closePanel();if(document.activeElement)document.activeElement.blur()}
 });
 
 /* 表 */

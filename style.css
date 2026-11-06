@@ -124,14 +124,17 @@ html,body{overscroll-behavior-x:none}
 .rich hr{border:0;border-top:1px solid var(--line);margin:10px 0}
 .rich font[size="1"]{font-size:.7em}.rich font[size="2"]{font-size:.82em}.rich font[size="3"]{font-size:1em}.rich font[size="4"]{font-size:1.15em}.rich font[size="5"]{font-size:1.35em}.rich font[size="6"]{font-size:1.7em}.rich font[size="7"]{font-size:2.1em}
 .fbar{position:fixed;z-index:10;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));display:none;justify-content:space-around;align-items:center;height:52px;border-radius:999px;background:var(--bar-bg);box-shadow:0 4px 20px rgba(0,0,0,.18),0 0 0 .5px var(--line);-webkit-user-select:none;user-select:none}
-html[data-view=note][data-mode=memo] .fbar{display:flex}
+html[data-view=note] .fbar{display:flex}
+html[data-mode=script] .mo{display:none!important}
 html.kb .fbar{bottom:calc(var(--kb) + 8px)}
-.fbar button{border:0;background:none;color:var(--fg);width:48px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;padding:0}
+.fbar button{flex:1;min-width:0;max-width:56px;border:0;background:none;color:var(--fg);height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;padding:0}
 .fbar button:active,.fbar button.on{background:var(--hl)}
 .fbar .aa{font-size:21px;font-weight:500}
+.fbar .br{font-size:17px;font-weight:600;letter-spacing:-.15em;padding-right:.15em}
+.text.rich{white-space:pre-wrap;cursor:text}
 .fpanel{position:fixed;z-index:11;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:calc(max(12px,env(safe-area-inset-bottom)) + 60px);max-height:calc(var(--vh,100vh) - 170px);overflow-y:auto;background:var(--bar-bg);border-radius:18px;box-shadow:0 6px 28px rgba(0,0,0,.25),0 0 0 .5px var(--line);padding:8px 10px 10px;-webkit-user-select:none;user-select:none}
 html.kb .fpanel{bottom:calc(var(--kb) + 68px)}
-html:not([data-view=note]) .fpanel,html[data-mode=script] .fpanel{display:none}
+html:not([data-view=note]) .fpanel{display:none}
 .fp-h{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:15px;padding:0 2px 4px}
 .fp-h button{border:0;background:var(--line);color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:13px}
 .fp-r{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:4px 0}
