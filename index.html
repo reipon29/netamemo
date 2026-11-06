@@ -96,15 +96,17 @@ const sw=s=>[...s].reduce((a,c)=>a+cw(c),0);
 function padTo(s,w){const d=w-sw(s);return s+'　'.repeat(Math.max(0,Math.floor(d/2)))+(d>0&&d%2?' ':'')}
 const cleanName=s=>String(s).replace(/[：:\n]/g,'').trim();
 
-// 「A ああああ」のように半角スペースで区切った台本。2回以上出てくる名前（8文字まで）だけを話者とみなす。
+// 「A ああああ」のように半角スペースで区切った台本。
+// 自動判定（取り込み時）：2回以上出てくる名前か、A・B のような英字1〜2文字の名前を話者とみなす。
+// loose（「台本」に切り替えたとき）：4文字以内の名前なら1回だけでも話者とみなす。
 const SP_RE=/^([^\s：:]{1,8}) +(\S.*)$/;
-function spaceNames(lines){
+function spaceNames(lines,loose){
   const ls=lines.filter(s=>s.trim()),cnt={};
   for(const s of ls){const m=s.match(SP_RE);if(m)cnt[m[1]]=(cnt[m[1]]||0)+1}
-  const names=Object.keys(cnt).filter(k=>cnt[k]>=2);
+  const names=Object.keys(cnt).filter(k=>cnt[k]>=2||/^[A-Za-zＡ-Ｚａ-ｚ]{1,2}$/.test(k)||loose&&[...k].length<=4);
   if(!names.length||names.length>8)return null;
   const hit=names.reduce((a,k)=>a+cnt[k],0);
-  return hit>=3&&hit>=ls.length*.5?new Set(names):null;
+  return loose||hit>=2&&hit>=ls.length*.5?new Set(names):null;
 }
 function matchLine(raw,spNames){
   const m=raw.match(RE);if(m)return m;
@@ -114,7 +116,7 @@ function matchLine(raw,spNames){
 
 function parseScript(text,meta=[]){
   const sc={head:'',speakers:[],lines:[]},by={},head=[];
-  const rows=text.split(/\r?\n/),spNames=rows.some(s=>RE.test(s))?null:spaceNames(rows);
+  const rows=text.split(/\r?\n/),spNames=rows.some(s=>RE.test(s))?null:spaceNames(rows,true);
   const add=(name,color)=>{
     if(!by[name]){const p={id:uid(),name,color:color||COLORS.find(c=>!sc.speakers.some(s=>s.color===c))||COLORS[sc.speakers.length%COLORS.length]};by[name]=p;sc.speakers.push(p)}
     return by[name].id;
