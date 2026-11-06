@@ -347,6 +347,7 @@ function rowEls(ln){
   const t=document.createElement('div');t.className='text rich';t.contentEditable='true';t.dataset.id=ln.id;
   t.setAttribute('enterkeyhint','next');t.setAttribute('role','textbox');t.setAttribute('autocapitalize','off');
   t.innerHTML=ln.h||lineHtml(ln.text);
+  if(panelOpen())t.setAttribute('inputmode','none');
   return[b,t];
 }
 function renderScript(){
@@ -739,7 +740,7 @@ function clean(html,paste){
       walk(c);
       if(!OK_TAGS.has(c.tagName)){c.replaceWith(...c.childNodes);continue}
       const st=OK_STYLE.filter(k=>!(paste&&/color/.test(k))).map(k=>[k,c.style.getPropertyValue(k)]).filter(([,v])=>v&&!/url|expression|\\/i.test(v));
-      const cls=[...c.classList].filter(x=>x==='chk'||x==='done');
+      const cls=[...c.classList].filter(x=>x==='chk'||x==='done'||x==='dash');
       const keep={};
       if(c.tagName==='FONT'){if(!paste&&c.getAttribute('color'))keep.color=c.getAttribute('color');if(!paste&&/^[1-7]$/.test(c.getAttribute('size')||''))keep.size=c.getAttribute('size')}
       if(/^(TD|TH)$/.test(c.tagName)){for(const k of['colspan','rowspan'])if(/^\d{1,2}$/.test(c.getAttribute(k)||''))keep[k]=c.getAttribute(k)}
@@ -770,12 +771,12 @@ function toText(root){
       const start=out.length;
       if(t==='LI'){
         const p=c.parentElement,i=[...p.children].filter(x=>x.tagName==='LI').indexOf(c);
-        line='　'.repeat(Math.max(0,depth-1))+(p.classList.contains('chk')?(c.classList.contains('done')?'☑ ':'☐ '):p.tagName==='OL'?`${i+1}. `:'・');
+        line='　'.repeat(Math.max(0,depth-1))+(p.classList.contains('chk')?(c.classList.contains('done')?'☑ ':'☐ '):p.classList.contains('dash')?'－ ':p.tagName==='OL'?`${i+1}. `:'・');
       }
       if((t==='TD'||t==='TH')&&c.previousElementSibling)line+=' | ';
       walk(c,depth+(t==='UL'||t==='OL'?1:0));
       if(block){
-        if(line){if(out.length>start&&/^[　]*(・|☐ |☑ |\d+\. )$/.test(line))line='';else flush()}
+        if(line){if(out.length>start&&/^[　]*(・|－ |☐ |☑ |\d+\. )$/.test(line))line='';else flush()}
         else if(out.length===start&&/^(DIV|P|H1|H2|H3|PRE)$/.test(t))out.push('');
       }
     }
@@ -834,7 +835,7 @@ const hostOf=n=>{if(n&&n.nodeType===3)n=n.parentElement;return n&&n.closest?n.cl
 document.addEventListener('selectionchange',()=>{
   const s=getSelection();if(!s.rangeCount)return;
   const h=hostOf(s.anchorNode);
-  if(h){saved=s.getRangeAt(0).cloneRange();savedEl=h;if(!$('#fpanel').hidden)updatePanel()}
+  if(h){saved=s.getRangeAt(0).cloneRange();savedEl=h;updatePanel()}
 });
 // いま書式をかける場所：メモなら本文、台本なら最後に触った行
 function edRoot(){
@@ -882,83 +883,170 @@ function bracket(o,c){
   edited(root);
 }
 const listOf=()=>{const el=selEl();const li=el&&el.closest('li');return li&&$memo.contains(li)?li.parentElement:null};
+// kind：ul（・）/ dash（－）/ check（◯）/ ol（1.）
 function setList(kind){
-  const ul=listOf();
-  if(kind==='check'){
-    if(ul&&ul.classList.contains('chk')){exec('insertUnorderedList');return}
-    if(!(ul&&ul.tagName==='UL'))exec('insertUnorderedList');
-    listOf()?.classList.add('chk');memoChanged();return;
-  }
-  if(kind==='ul'&&ul&&ul.classList.contains('chk')){ul.classList.remove('chk');memoChanged();return}
-  exec(kind==='ul'?'insertUnorderedList':'insertOrderedList');
+  if(kind==='ol'){exec('insertOrderedList');return}
+  const want={ul:'',dash:'dash',check:'chk'}[kind];
+  const kindOf=u=>u&&u.tagName==='UL'?(u.classList.contains('chk')?'chk':u.classList.contains('dash')?'dash':''):null;
+  const now=kindOf(listOf());
+  if(now===want){exec('insertUnorderedList');return}
+  if(now===null)exec('insertUnorderedList');
+  const ul=listOf();if(!ul||ul.tagName!=='UL')return;
+  ul.classList.remove('chk','dash');if(want)ul.classList.add(want);
+  memoChanged();
 }
 function setBlock(tag){
   if(!exec('formatBlock',`<${tag}>`)&&tag==='div')exec('formatBlock','<p>');
 }
 
-/* 書式パネル（Aa） */
+/* 書式パネル（Aa）：開いている間はキーボードを引っ込める */
 const TXT_COLORS=[['標準','rgb(1, 2, 3)'],['赤','#ff3b30'],['オレンジ','#ff9500'],['黄','#d4a300'],['緑','#34c759'],['青','#0a84ff'],['紫','#af52de'],['ピンク','#ff2d92'],['グレー','#8e8e93']];
 const HL_COLORS=[['なし','rgb(1, 2, 3)'],['黄','rgba(255,214,10,.45)'],['緑','rgba(52,199,89,.35)'],['青','rgba(10,132,255,.3)'],['ピンク','rgba(255,45,146,.3)'],['オレンジ','rgba(255,149,0,.38)']];
+const ic=(p,w=26)=>`<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const PI={
+  pen:ic('<path d="M14.5 5.5l4 4L9 19H5v-4z"/><path d="M4 22h16" stroke-width="1.4"/>'),
+  ul:ic('<circle cx="5" cy="6" r="1.2" fill="currentColor"/><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="5" cy="18" r="1.2" fill="currentColor"/><path d="M9.5 6H20M9.5 12H20M9.5 18H20"/>'),
+  dash:ic('<path d="M3.5 6h3M3.5 12h3M3.5 18h3M9.5 6H20M9.5 12H20M9.5 18H20"/>'),
+  ol:ic('<path d="M9.5 6H20M9.5 12H20M9.5 18H20"/><text x="2.5" y="8.2" font-size="6.5" fill="currentColor" stroke="none" font-family="-apple-system,sans-serif">1</text><text x="2.5" y="14.2" font-size="6.5" fill="currentColor" stroke="none" font-family="-apple-system,sans-serif">2</text><text x="2.5" y="20.2" font-size="6.5" fill="currentColor" stroke="none" font-family="-apple-system,sans-serif">3</text>'),
+  out:ic('<path d="M10 6h10M13 12h7M10 18h10M7 9l-3 3 3 3"/>'),
+  ind:ic('<path d="M4 6h10M4 12h7M4 18h10M17 9l3 3-3 3"/>'),
+  al:ic('<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>'),
+  ac:ic('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
+  ar:ic('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
+  hr:ic('<path d="M3 12h18"/><path d="M8 7h8M8 17h8" stroke-width="1.2" opacity=".5"/>'),
+  clear:ic('<path d="M5 6h11M10.5 6l-3 12M14 14l6 6M20 14l-6 6"/>')
+};
+// [キー, 中身, 説明]。行は「グループ」の並び、b: などの台本モードで使えないものは .mo
 const PANEL=[
-  ['', [['b:h1','タイトル'],['b:h2','見出し'],['b:h3','小見出し'],['b:div','本文'],['b:pre','等幅']]],
-  ['', [['c:bold','<b>B</b>'],['c:italic','<i style="font-family:serif">I</i>'],['c:underline','<u>U</u>'],['c:strikeThrough','<s>S</s>'],['c:superscript','x²'],['c:subscript','x₂']]],
-  ['', [['l:ul','・ 箇条書き'],['l:ol','1. 番号'],['l:check','◯ チェック'],['c:outdent','⇤'],['c:indent','⇥']]],
-  ['配置', [['c:justifyLeft','左'],['c:justifyCenter','中央'],['c:justifyRight','右']]],
-  ['文字の大きさ', [['s:2','小'],['s:3','標準'],['s:5','大'],['s:6','特大']]],
-  ['文字の色', TXT_COLORS.map(([n,c],i)=>['fc:'+c,'',i?c:'none',n])],
-  ['マーカー', HL_COLORS.map(([n,c],i)=>['hc:'+c,'',i?c:'none',n])],
-  ['', [['x:hr','― 区切り線'],['x:clear','書式をクリア']]]
+  {seg:true,items:[['b:h1','タイトル'],['b:h2','見出し'],['b:h3','小見出し'],['b:div','本文'],['b:pre','等幅']]},
+  {groups:[[['c:bold','<b>B</b>','太字'],['c:italic','<i style="font-family:Georgia,serif">I</i>','斜体'],['c:underline','<u>U</u>','下線'],['c:strikeThrough','<s>S</s>','取り消し線']],[['p:hl',PI.pen,'マーカー'],['p:fc','<i class="dot"></i>','文字の色']]]},
+  {pal:true},
+  {groups:[[['l:ul',PI.ul,'箇条書き'],['l:dash',PI.dash,'ダッシュ'],['l:ol',PI.ol,'番号付き']],[['c:outdent',PI.out,'インデントを減らす'],['c:indent',PI.ind,'インデントを増やす']],[['x:hr',PI.hr,'区切り線']]]},
+  {groups:[[['c:justifyLeft',PI.al,'左揃え'],['c:justifyCenter',PI.ac,'中央揃え'],['c:justifyRight',PI.ar,'右揃え']],[['c:superscript','x²','上付き'],['c:subscript','x₂','下付き']],[['x:clear',PI.clear,'書式をクリア']]]},
+  {groups:[[['s:2','<small>小</small>','小さい文字'],['s:3','標準','標準の大きさ'],['s:5','<span style="font-size:1.15em">大</span>','大きい文字'],['s:6','<span style="font-size:1.35em">特大</span>','特大の文字']]]}
 ];
+const memoOnly=k=>/^(b:|l:|x:hr|c:(outdent|indent|justify))/.test(k);
+let palKind=null;
 (function buildPanel(){
   const p=$('#fpanel');
-  const h=document.createElement('div');h.className='fp-h';h.innerHTML='<span>書式</span><button data-close aria-label="閉じる">✕</button>';p.append(h);
-  for(const[label,btns]of PANEL){
-    if(label){const l=document.createElement('div');l.className='fp-l';l.textContent=label;p.append(l)}
-    const r=document.createElement('div');r.className='fp-r';
-    for(const[k,html,color,name]of btns){
-      const b=document.createElement('button');b.dataset.k=k;b.innerHTML=html;
-      if(/^(b:|l:|x:hr|c:(outdent|indent|justify))/.test(k))b.classList.add('mo');
-      if(color){b.className='cl'+(color==='none'?' none':'');if(color!=='none')b.style.background=color;b.setAttribute('aria-label',name)}
-      r.append(b);
+  const h=document.createElement('div');h.className='fp-h';h.innerHTML='<span>フォーマット</span><button data-close aria-label="閉じる">✕</button>';p.append(h);
+  const btn=([k,html,label])=>{const b=document.createElement('button');b.dataset.k=k;b.innerHTML=html;if(label)b.setAttribute('aria-label',label);if(memoOnly(k))b.classList.add('mo');return b};
+  for(const row of PANEL){
+    const r=document.createElement('div');
+    if(row.pal){r.className='fp-pal';r.hidden=true;p.append(r);continue}
+    if(row.seg){r.className='fp-seg mo';r.append(...row.items.map(btn));p.append(r);continue}
+    r.className='fp-row';
+    for(const g of row.groups){
+      const d=document.createElement('div');d.className='fp-g';d.append(...g.map(btn));
+      if(g.every(x=>memoOnly(x[0])))d.classList.add('mo');
+      r.append(d);
     }
     p.append(r);
-    if([...r.children].every(b=>b.classList.contains('mo'))){r.classList.add('mo');if(label)r.previousElementSibling.classList.add('mo')}
   }
 })();
-// ボタンを押してもキーボード（入力位置）が消えないようにする
+function showPalette(kind){
+  const pal=$('#fpanel .fp-pal');
+  if(palKind===kind||!kind){palKind=null;pal.hidden=true;updatePanel();return}
+  palKind=kind;
+  const list=kind==='fc'?TXT_COLORS:HL_COLORS;
+  pal.replaceChildren(...list.map(([name,c],i)=>{
+    const b=document.createElement('button');b.className='cl'+(i?'':' none');b.dataset.k=kind+'c:'+c;b.setAttribute('aria-label',name);
+    if(i)b.style.setProperty('--c',c);
+    const l=document.createElement('span');l.textContent=name;b.append(l);
+    return b;
+  }));
+  pal.hidden=false;updatePanel();
+  pal.querySelector('.on')?.scrollIntoView({inline:'nearest',block:'nearest'});
+}
+// ボタンを押しても入力位置が消えないようにする
 ['#fbar','#fpanel'].forEach(sel=>$(sel).addEventListener('mousedown',e=>e.preventDefault()));
 $('#fpanel').addEventListener('click',e=>{
-  if(e.target.closest('[data-close]')){closePanel();return}
+  if(e.target.closest('[data-close]')){closePanel(true);return}
   const b=e.target.closest('[data-k]');if(!b||!cur)return;
   const[t,v]=b.dataset.k.split(/:(.*)/);
+  if(t==='p'){showPalette(v);return}
   if(t==='b')setBlock(v);
   else if(t==='c')exec(v);
   else if(t==='l')setList(v);
   else if(t==='s')exec('fontSize',v);
-  else if(t==='fc')exec('foreColor',v,true);
-  else if(t==='hc'){if(!exec('hiliteColor',v,true))exec('backColor',v,true)}
+  else if(t==='fcc')exec('foreColor',v,true);
+  else if(t==='hlc'){if(!exec('hiliteColor',v,true))exec('backColor',v,true)}
   else if(v==='hr')exec('insertHorizontalRule');
   else if(v==='clear'){exec('removeFormat');if(cur.mode!=='script')setBlock('div')}
   updatePanel();
 });
+// いまの入力位置（選択範囲）にかかっている書式を、文章の中身から読み取る
+function normColor(c){const d=document.createElement('i');d.style.color=c;document.body.append(d);const v=getComputedStyle(d).color;d.remove();return v}
+function fmtState(){
+  const root=edRoot(),el=selEl();
+  const st={block:'div',list:'',align:'left',size:'3',fc:'rgb(1, 2, 3)',hl:'rgb(1, 2, 3)'};
+  if(!root||!el)return st;
+  const up=f=>{for(let n=el;n&&n!==root&&root.contains(n);n=n.parentElement){const r=f(n);if(r)return r}return null};
+  st.bold=!!up(n=>/^(B|STRONG)$/.test(n.tagName)||/^(bold|[6-9]00)$/.test(n.style.fontWeight));
+  st.italic=!!up(n=>/^(I|EM)$/.test(n.tagName)||n.style.fontStyle==='italic');
+  st.underline=!!up(n=>n.tagName==='U'||/underline/.test(n.style.textDecorationLine||n.style.textDecoration));
+  st.strikeThrough=!!up(n=>/^(S|STRIKE|DEL)$/.test(n.tagName)||/line-through/.test(n.style.textDecorationLine||n.style.textDecoration));
+  st.superscript=!!up(n=>n.tagName==='SUP');
+  st.subscript=!!up(n=>n.tagName==='SUB');
+  const blk=el.closest('h1,h2,h3,pre');if(blk&&root.contains(blk))st.block=blk.tagName.toLowerCase();
+  const ul=root===$memo?listOf():null;
+  st.list=ul?(ul.tagName==='OL'?'ol':ul.classList.contains('chk')?'check':ul.classList.contains('dash')?'dash':'ul'):'';
+  const box=el.closest('div,p,h1,h2,h3,pre,li,td')||root;
+  const ta=getComputedStyle(box).textAlign;st.align=ta==='center'?'center':ta==='right'||ta==='end'?'right':'left';
+  st.size=up(n=>n.tagName==='FONT'&&n.getAttribute('size'))||'3';
+  const fc=up(n=>n.style.color&&n.style.color!=='var(--fg)'?n.style.color:n.tagName==='FONT'&&n.getAttribute('color'));
+  if(fc)st.fc=normColor(fc);
+  const hl=up(n=>n.style.backgroundColor&&n.style.backgroundColor!=='transparent'?n.style.backgroundColor:null);
+  if(hl)st.hl=normColor(hl);
+  return st;
+}
 function updatePanel(){
-  const st=c=>{try{return document.queryCommandState(c)}catch{return false}};
-  let blk='';try{blk=(document.queryCommandValue('formatBlock')||'').toLowerCase()}catch{}
-  const ul=listOf(),chk=ul&&ul.classList.contains('chk');
+  if(!panelOpen())return;
+  const st=fmtState();
   $('#fpanel').querySelectorAll('[data-k]').forEach(b=>{
     const[t,v]=b.dataset.k.split(/:(.*)/);let on=false;
-    if(t==='b')on=v==='div'?!/^(h1|h2|h3|pre)$/.test(blk):blk===v;
-    else if(t==='c'&&!/dent$/.test(v))on=st(v);
-    else if(t==='l')on=v==='check'?!!chk:v==='ul'?!!ul&&ul.tagName==='UL'&&!chk:!!ul&&ul.tagName==='OL';
+    if(t==='b')on=st.block===v;
+    else if(t==='c')on=/^justify/.test(v)?'justify'+st.align[0].toUpperCase()+st.align.slice(1)===v:!!st[v];
+    else if(t==='l')on=st.list===v;
+    else if(t==='s')on=st.size===v;
+    else if(t==='p')on=palKind===v;
+    else if(t==='fcc')on=(v==='rgb(1, 2, 3)'?st.fc===v:normColor(v)===st.fc);
+    else if(t==='hlc')on=(v==='rgb(1, 2, 3)'?st.hl===v:normColor(v)===st.hl);
     b.classList.toggle('on',on);
   });
+  $('#fpanel .dot').style.background=st.fc==='rgb(1, 2, 3)'?'':st.fc;
+  showSel();
 }
-function openPanel(){$('#fpanel').hidden=false;$('#fbar [data-f=panel]').classList.add('on');updatePanel()}
-function closePanel(){$('#fpanel').hidden=true;$('#fbar [data-f=panel]').classList.remove('on')}
+// キーボードを引っ込めている間も、選んでいる文字がわかるように色をつける
+function showSel(){
+  try{
+    if(!window.Highlight||!CSS.highlights)return;
+    CSS.highlights.delete('fsel');
+    const root=edRoot();
+    if(panelOpen()&&saved&&!saved.collapsed&&root&&root.contains(saved.startContainer))CSS.highlights.set('fsel',new Highlight(saved));
+  }catch{}
+}
+// inputmode="none" にすると、入力位置はそのままでキーボードだけ出なくなる
+function noKeyboard(on){
+  document.querySelectorAll('#memo,#script .text').forEach(el=>on?el.setAttribute('inputmode','none'):el.removeAttribute('inputmode'));
+}
+function panelOpen(){return!$('#fpanel').hidden}
+function openPanel(){
+  noKeyboard(true);
+  const a=document.activeElement;if(a&&a!==document.body)a.blur();
+  $('#fpanel').hidden=false;document.documentElement.classList.add('fp');
+  showPalette(null);updatePanel();
+}
+function closePanel(refocus){
+  if(!panelOpen())return;
+  $('#fpanel').hidden=true;document.documentElement.classList.remove('fp');
+  noKeyboard(false);palKind=null;showSel();
+  if(refocus){const r=edRoot();if(r){r.blur();restoreSel()}}
+}
 $('#fbar').addEventListener('click',e=>{
   const b=e.target.closest('[data-f]');if(!b||!cur)return;
   const f=b.dataset.f;
-  if(f==='panel'){$('#fpanel').hidden?openPanel():closePanel()}
+  if(f==='panel'){panelOpen()?closePanel(true):openPanel()}
   else if(f==='kagi')bracket('「','」');
   else if(f==='kakko')bracket('（','）');
   else if(f==='check')setList('check');

@@ -1,6 +1,6 @@
 // オフライン対応：キャッシュを即返し、裏で最新版を取得（次回起動時に反映）
 // GitHub Pages は10分間ブラウザにキャッシュさせるので、取得時は必ずサーバーに確認する
-const CACHE = 'netamemo-v11';
+const CACHE = 'netamemo-v13';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
