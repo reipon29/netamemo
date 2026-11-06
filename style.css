@@ -52,7 +52,14 @@ svg{display:block}
 .ta::placeholder{color:var(--muted)}
 #memo{min-height:calc(100vh - 140px)}
 #shead{padding-bottom:10px;border-bottom:1px solid var(--line);min-height:calc(1.6em + 10px)}
-#speakers{display:flex;gap:6px;overflow-x:auto;padding:6px 10px 10px;scrollbar-width:none;border-bottom:1px solid var(--line)}
+#spbar{display:flex;align-items:center;border-bottom:1px solid var(--line)}
+#speakers{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;padding:6px 6px 10px 10px;scrollbar-width:none}
+.sptools{flex:none;display:flex;gap:4px;padding:6px 10px 10px 6px;border-left:1px solid var(--line)}
+.sptools button{border:0;background:var(--line);color:var(--fg);height:34px;min-width:40px;padding:0 8px;border-radius:999px;font-size:15px;font-weight:600}
+.sptools button:active,.sptools button.on{background:var(--accent);color:#fff}
+.sptools .aa{font-size:16px}
+/* キーボードを出しているときも、話者の列を画面の上に固定する */
+html.kb[data-mode=script] .nh{transform:translateY(var(--vvt,0px))}
 #speakers::-webkit-scrollbar{display:none}
 .chip{flex:none;border:1.5px solid currentColor;border-radius:999px;padding:5px 14px;font-size:15px;font-weight:700;background:var(--card)}
 .chip.plain{color:var(--muted);border-style:dashed;font-weight:500}
@@ -124,13 +131,13 @@ html,body{overscroll-behavior-x:none}
 .rich hr{border:0;border-top:1px solid var(--line);margin:10px 0}
 .rich font[size="1"]{font-size:.7em}.rich font[size="2"]{font-size:.82em}.rich font[size="3"]{font-size:1em}.rich font[size="4"]{font-size:1.15em}.rich font[size="5"]{font-size:1.35em}.rich font[size="6"]{font-size:1.7em}.rich font[size="7"]{font-size:2.1em}
 .fbar{position:fixed;z-index:10;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));display:none;justify-content:space-around;align-items:center;height:52px;border-radius:999px;background:var(--bar-bg);box-shadow:0 4px 20px rgba(0,0,0,.18),0 0 0 .5px var(--line);-webkit-user-select:none;user-select:none}
-html[data-view=note] .fbar{display:flex}
+html[data-view=note][data-mode=memo] .fbar{display:flex}
 html[data-mode=script] .mo{display:none!important}
 html.kb .fbar{bottom:calc(var(--kb) + 8px)}
 .fbar button{flex:1;min-width:0;max-width:56px;border:0;background:none;color:var(--fg);height:44px;display:flex;align-items:center;justify-content:center;border-radius:12px;padding:0}
 .fbar button:active,.fbar button.on{background:var(--hl)}
 .fbar .aa{font-size:21px;font-weight:500}
-.fbar .br{font-size:17px;font-weight:600;letter-spacing:-.15em;padding-right:.15em}
+.fbar .br{font-size:17px;font-weight:600}
 .text.rich{white-space:pre-wrap;cursor:text}
 .fpanel{position:fixed;z-index:11;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));max-height:70vh;overflow-y:auto;background:var(--bar-bg);border-radius:30px;box-shadow:0 8px 32px rgba(0,0,0,.3),0 0 0 .5px var(--line);padding:12px 14px 16px;-webkit-user-select:none;user-select:none;touch-action:pan-y}
 html:not([data-view=note]) .fpanel{display:none}

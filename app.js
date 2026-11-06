@@ -152,7 +152,7 @@ function setMode(m){
   cur.mode=m;document.documentElement.dataset.mode=m;closePanel();
   $('#seg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));
   const script=m==='script';
-  $memo.hidden=script;$('#scriptWrap').hidden=!script;$('#speakers').hidden=!script;
+  $memo.hidden=script;$('#scriptWrap').hidden=!script;$('#spbar').hidden=!script;
   if(script){sc=parseScript(cur.text,cur.spk);applySh(sc,cur.sh);renderScript()}
   else{
     if(cur.html==null&&cur.sh&&sc)cur.html=scriptHtml(sc);
@@ -439,6 +439,15 @@ $script.addEventListener('click',e=>{const b=e.target.closest('.name');if(b)open
 
 let wasEditing=false;
 $('#speakers').addEventListener('pointerdown',e=>{wasEditing=!!document.activeElement&&!!document.activeElement.closest('#script .text');if(e.target.closest('.chip'))e.preventDefault()});
+// 話者の列の右端：書式（Aa）と括弧
+const $tools=$('#spbar .sptools');
+['pointerdown','mousedown'].forEach(ev=>$tools.addEventListener(ev,e=>e.preventDefault()));
+$tools.addEventListener('click',e=>{
+  const b=e.target.closest('[data-t]');if(!b||!cur)return;
+  if(b.dataset.t==='panel')panelOpen()?closePanel(true):openPanel();
+  else if(b.dataset.t==='kagi')bracket('「','」');
+  else bracket('（','）');
+});
 $('#speakers').addEventListener('click',e=>{
   const c=e.target.closest('.chip');if(!c)return;
   if(c.dataset.edit){openSpk();return}
@@ -1034,12 +1043,12 @@ function panelOpen(){return!$('#fpanel').hidden}
 function openPanel(){
   noKeyboard(true);
   const a=document.activeElement;if(a&&a!==document.body)a.blur();
-  $('#fpanel').hidden=false;document.documentElement.classList.add('fp');
+  $('#fpanel').hidden=false;document.documentElement.classList.add('fp');$tools.querySelector('.aa').classList.add('on');
   showPalette(null);updatePanel();
 }
 function closePanel(refocus){
   if(!panelOpen())return;
-  $('#fpanel').hidden=true;document.documentElement.classList.remove('fp');
+  $('#fpanel').hidden=true;document.documentElement.classList.remove('fp');$tools.querySelector('.aa').classList.remove('on');
   noKeyboard(false);palKind=null;showSel();
   if(refocus){const r=edRoot();if(r){r.blur();restoreSel()}}
 }
@@ -1047,7 +1056,6 @@ $('#fbar').addEventListener('click',e=>{
   const b=e.target.closest('[data-f]');if(!b||!cur)return;
   const f=b.dataset.f;
   if(f==='panel'){panelOpen()?closePanel(true):openPanel()}
-  else if(f==='kagi')bracket('「','」');
   else if(f==='kakko')bracket('（','）');
   else if(f==='check')setList('check');
   else if(f==='table')tableMenu();
@@ -1084,7 +1092,7 @@ function tableMenu(){
   const vv=window.visualViewport,root=document.documentElement;
   const place=()=>{
     const h=vv?vv.height:innerHeight,kb=vv?Math.max(0,Math.round(innerHeight-vv.height-vv.offsetTop)):0;
-    root.style.setProperty('--kb',kb+'px');root.style.setProperty('--vh',h+'px');
+    root.style.setProperty('--kb',kb+'px');root.style.setProperty('--vvt',(vv?Math.max(0,vv.offsetTop):0)+'px');root.style.setProperty('--vh',h+'px');
     root.classList.toggle('kb',kb>40);
   };
   if(vv){vv.addEventListener('resize',place);vv.addEventListener('scroll',place)}
