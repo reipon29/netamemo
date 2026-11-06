@@ -2,6 +2,10 @@ const KEY='netamemo.notes.v1',OLD_KEY='manzai.scripts.v1',DAY=864e5,TRASH_DAYS=3
 const COLORS=['#e8590c','#1971c2','#2f9e44','#9c36b5','#c2255c','#0c8599','#e67700','#5c7cfa'];
 const $=s=>document.querySelector(s);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+// ピンチ・ダブルタップでの拡大縮小を止める
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('gesturechange',e=>e.preventDefault());
+document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
 const $notes=$('#notes'),$q=$('#q'),$memo=$('#memo'),$shead=$('#shead'),$script=$('#script'),$dlg=$('#dlg');
 
 /* ---------- 保存 ---------- */
@@ -16,14 +20,15 @@ function touch(n){n.updated=Date.now();notes[n.id]=n;schedule()}
 const flush=()=>{if(saveTimer)persistNow()};
 addEventListener('pagehide',flush);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)flush()});
-addEventListener('storage',e=>{if(e.key!==KEY)return;load();if(cur&&cur.text.trim())notes[cur.id]=cur;if(!$('#vList').hidden)renderList()});
+addEventListener('storage',e=>{if(e.key!==KEY)return;load();if(cur&&!isEmpty(cur))notes[cur.id]=cur;if(!$('#vList').hidden)renderList()});
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
 
 function newNote(text='',mode='memo'){const t=Date.now();return{id:uid(),text,mode,spk:[],pinned:false,created:t,updated:t}}
+const isEmpty=n=>!n.text.trim()&&!(n.imgs&&n.imgs.length);
 const live=()=>Object.values(notes).filter(n=>!n.deleted);
 function titleOf(n){
-  const ls=n.text.split('\n').map(s=>s.trim()).filter(Boolean);
-  return{title:ls[0]||'新規メモ',preview:ls[1]||'追加テキストなし'};
+  const ls=n.text.split('\n').map(s=>s.trim()).filter(Boolean),ni=(n.imgs||[]).length;
+  return{title:ls[0]||(ni?'写真':'新規メモ'),preview:ls[1]||(ni?`写真 ${ni}枚`:'追加テキストなし')};
 }
 const fileBase=n=>titleOf(n).title.replace(/[\\/:*?"<>|]/g,'_').slice(0,40)||'メモ';
 
@@ -102,7 +107,7 @@ function fromScript(s){
 function validNote(n){
   if(!n||typeof n.text!=='string')return null;
   const t=Date.now();
-  return{id:String(n.id||uid()),text:n.text,mode:n.mode==='script'?'script':'memo',spk:Array.isArray(n.spk)?n.spk:[],pinned:!!n.pinned,created:n.created||n.updated||t,updated:n.updated||t,...(n.deleted?{deleted:n.deleted}:{})};
+  return{id:String(n.id||uid()),text:n.text,mode:n.mode==='script'?'script':'memo',spk:Array.isArray(n.spk)?n.spk:[],pinned:!!n.pinned,created:n.created||n.updated||t,updated:n.updated||t,...(Array.isArray(n.imgs)&&n.imgs.length?{imgs:n.imgs.filter(x=>typeof x==='string')}:{}),...(n.deleted?{deleted:n.deleted}:{})};
 }
 
 /* ---------- 画面遷移 ---------- */
@@ -118,9 +123,10 @@ function route(){
 addEventListener('popstate',route);
 function leaveNote(){
   if(!cur)return;
-  if(!cur.text.trim()){if(notes[cur.id]){delete notes[cur.id];persistNow()}}
+  if(isEmpty(cur)){if(notes[cur.id]){delete notes[cur.id];persistNow()}}
   else flush();
   if(document.activeElement)document.activeElement.blur();
+  if(!$('#viewer').hidden)closeViewer();
   cur=null;sc=null;
 }
 function showList(){fromList=false;show('list');renderList();scrollTo(0,listY)}
@@ -138,6 +144,7 @@ function openNote(n){
   cur=n;show('note');
   $('#ndate').textContent=fmtLong(n.updated);
   setMode(n.mode||'memo');
+  renderImgs();
   scrollTo(0,0);
 }
 function setMode(m){
@@ -465,7 +472,7 @@ $('#btnNoteMenu').addEventListener('click',()=>{
     }),
     item('.txt ファイルで保存',()=>saveFiles([new File([n.text],fileBase(n)+'.txt',{type:'text/plain'})])),
     item('複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();history.replaceState(null,'','#/n/'+c.id);openNote(c);toast('複製しました')}),
-    item('削除',()=>{if(!n.text.trim()){goList();return}trash(n);goList()},{cls:'danger'})
+    item('削除',()=>{if(isEmpty(n)){goList();return}trash(n);goList()},{cls:'danger'})
   ]);
 });
 
@@ -477,9 +484,9 @@ function openTrash(){
     noteEl(`削除したメモは${TRASH_DAYS}日後に完全に削除されます。タップで復元できます。`),
     ...arr.map(n=>item(titleOf(n).title,()=>sheet(titleOf(n).title,[
       item('復元',()=>{delete n.deleted;persistNow();renderList();toast('復元しました')}),
-      item('完全に削除',()=>{if(!confirm('完全に削除しますか？元に戻せません。'))return;delete notes[n.id];persistNow()},{cls:'danger'})
+      item('完全に削除',()=>{if(!confirm('完全に削除しますか？元に戻せません。'))return;delete notes[n.id];persistNow();gcImgs()},{cls:'danger'})
     ]),{small:`あと${left(n)}日`,keep:true})),
-    ...(arr.length?[item('すべて完全に削除',()=>{if(!confirm(`${arr.length}件を完全に削除しますか？元に戻せません。`))return;arr.forEach(n=>delete notes[n.id]);persistNow()},{cls:'danger'})]:[noteEl('ありません')])
+    ...(arr.length?[item('すべて完全に削除',()=>{if(!confirm(`${arr.length}件を完全に削除しますか？元に戻せません。`))return;arr.forEach(n=>delete notes[n.id]);persistNow();gcImgs()},{cls:'danger'})]:[noteEl('ありません')])
   ]);
 }
 
@@ -498,9 +505,16 @@ async function forceUpdate(){
 
 /* ---------- iPhoneの「メモ」連携・ファイル ---------- */
 async function shareText(n){
-  if(!n.text.trim()){toast('メモが空です');return}
+  if(isEmpty(n)){toast('メモが空です');return}
   flush();
-  if(navigator.share){try{await navigator.share({text:n.text});return}catch(e){if(e.name==='AbortError')return}}
+  if(navigator.share){
+    const data=n.text.trim()?{text:n.text}:{};
+    const files=await noteFiles(n);
+    if(files.length&&navigator.canShare&&navigator.canShare({files}))data.files=files;
+    try{await navigator.share(data);return}
+    catch(e){if(e.name==='AbortError')return;if(e.name==='NotAllowedError'&&data.files){shareLater(data);return}}
+  }
+  if(!n.text.trim()){toast('共有できませんでした');return}
   try{await navigator.clipboard.writeText(n.text);toast('共有できないためコピーしました。「メモ」に貼り付けてください')}catch{toast('共有できませんでした')}
 }
 async function readClip(){
@@ -510,7 +524,12 @@ async function readClip(){
 async function saveFiles(files){
   // 共有シート →「ファイルに保存」でファイルAppへ
   if(!(navigator.canShare&&navigator.canShare({files}))){toast('この端末ではファイルを書き出せません');return}
-  try{await navigator.share({files})}catch(e){if(e.name!=='AbortError')toast('書き出せませんでした')}
+  try{await navigator.share({files})}
+  catch(e){if(e.name==='NotAllowedError')shareLater({files});else if(e.name!=='AbortError')toast('書き出せませんでした')}
+}
+// 準備に時間がかかると共有シートを開けないので、ボタンをもう一度押してもらう
+function shareLater(data){
+  sheet('準備ができました',[item('共有・保存する',()=>navigator.share(data).catch(e=>{if(e.name!=='AbortError')toast('共有できませんでした')}))]);
 }
 const stamp=()=>{const d=new Date();return`${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}`};
 function exportAllTxt(){
@@ -518,9 +537,11 @@ function exportAllTxt(){
   const used={};
   saveFiles(arr.map(n=>{let b=fileBase(n),name=b,i=2;while(used[name])name=`${b} (${i++})`;used[name]=1;return new File([n.text],name+'.txt',{type:'text/plain'})}));
 }
-function exportBackup(){
+async function exportBackup(){
   const arr=live();if(!arr.length){toast('メモがありません');return}
-  saveFiles([new File([JSON.stringify({app:'netamemo',version:1,notes:arr},null,1)],`ネタメモ_バックアップ_${stamp()}.json`,{type:'application/json'})]);
+  const images={};
+  for(const id of new Set(arr.flatMap(n=>n.imgs||[]))){try{const b=await imgBlob(id);if(b)images[id]=await toDataURL(b)}catch{}}
+  saveFiles([new File([JSON.stringify({app:'netamemo',version:1,notes:arr,images},null,1)],`ネタメモ_バックアップ_${stamp()}.json`,{type:'application/json'})]);
 }
 $('#file').addEventListener('change',async e=>{
   const files=[...e.target.files];e.target.value='';if(!files.length)return;
@@ -530,6 +551,8 @@ $('#file').addEventListener('change',async e=>{
     try{
       if(/\.json$/i.test(f.name)){
         const o=JSON.parse(txt);
+        if(o&&o.app==='netamemo'&&o.images&&typeof o.images==='object')
+          for(const[id,u]of Object.entries(o.images))if(typeof u==='string'&&u.startsWith('data:image/'))await imgPut(id,await(await fetch(u)).blob());
         const list=o&&o.app==='netamemo'&&Array.isArray(o.notes)?o.notes.map(validNote):(Array.isArray(o)?o:o.scripts?o.scripts:[o]).map(fromScript);
         const ok=list.filter(Boolean);if(!ok.length)throw 0;
         for(const n of ok)if(!notes[n.id]||notes[n.id].updated<n.updated){notes[n.id]=n;added.push(n)}
@@ -544,6 +567,90 @@ $('#file').addEventListener('change',async e=>{
   else toast(added.length?`${added.length}件読み込みました`:'新しいメモはありませんでした');
   if(added.length===1&&!added[0].deleted)goNote(added[0]);else renderList();
 });
+
+/* ---------- 写真（容量が大きいので IndexedDB に保存） ---------- */
+let dbp=null;
+function idb(){
+  return dbp||(dbp=new Promise((ok,ng)=>{const r=indexedDB.open('netamemo',1);r.onupgradeneeded=()=>r.result.createObjectStore('img');r.onsuccess=()=>ok(r.result);r.onerror=()=>{dbp=null;ng(r.error)}}));
+}
+async function store(mode,fn){
+  const db=await idb();
+  return new Promise((ok,ng)=>{const t=db.transaction('img',mode),r=fn(t.objectStore('img'));t.oncomplete=()=>ok(r.result);t.onerror=t.onabort=()=>ng(t.error)});
+}
+const blobs={},urls={};
+async function imgBlob(id){if(!blobs[id]){const b=await store('readonly',s=>s.get(id));if(b)blobs[id]=b}return blobs[id]||null}
+async function imgURL(id){if(!urls[id]){const b=await imgBlob(id);if(b)urls[id]=URL.createObjectURL(b)}return urls[id]||null}
+const imgPut=(id,b)=>store('readwrite',s=>s.put(b,id)).then(()=>{blobs[id]=b});
+const toDataURL=b=>new Promise((ok,ng)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>ng(r.error);r.readAsDataURL(b)});
+async function noteFiles(n){
+  const out=[];
+  for(const[i,id]of(n.imgs||[]).entries()){try{const b=await imgBlob(id);if(b)out.push(new File([b],`${fileBase(n)}_${i+1}.jpg`,{type:b.type||'image/jpeg'}))}catch{}}
+  return out;
+}
+// どのメモからも使われなくなった写真を消す（複製したメモは写真を共有している）
+async function gcImgs(){
+  try{
+    const used=new Set(Object.values(notes).flatMap(n=>n.imgs||[]));
+    const keys=await store('readonly',s=>s.getAllKeys());
+    const gone=keys.filter(k=>!used.has(k));if(!gone.length)return;
+    await store('readwrite',s=>{gone.forEach(k=>s.delete(k));return{}});
+    gone.forEach(k=>{if(urls[k])URL.revokeObjectURL(urls[k]);delete urls[k];delete blobs[k]});
+  }catch{}
+}
+// 長辺2048pxまで縮めてJPEGにする
+async function shrink(file,max=2048){
+  const u=URL.createObjectURL(file);
+  try{
+    const img=new Image();img.src=u;await img.decode();
+    const w=img.naturalWidth,h=img.naturalHeight,k=Math.min(1,max/Math.max(w,h));
+    if(k===1&&file.type==='image/jpeg'&&file.size<1.5e6)return file;
+    const c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);
+    const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(img,0,0,c.width,c.height);
+    const b=await new Promise(ok=>c.toBlob(ok,'image/jpeg',.85));if(!b)throw 0;return b;
+  }finally{URL.revokeObjectURL(u)}
+}
+function renderImgs(){
+  const ids=(cur&&cur.imgs)||[],box=$('#imgs');
+  box.hidden=!ids.length;$('#vNote').classList.toggle('has-imgs',!!ids.length);
+  box.replaceChildren(...ids.map(id=>{
+    const b=document.createElement('button');b.className='ph';b.dataset.id=id;b.setAttribute('aria-label','写真');
+    const i=document.createElement('img');i.alt='';b.append(i);
+    imgURL(id).then(u=>{if(u)i.src=u}).catch(()=>{});
+    return b;
+  }));
+}
+$('#btnPhoto').addEventListener('click',()=>{if(document.activeElement)document.activeElement.blur();$('#photo').click()});
+$('#photo').addEventListener('change',async e=>{
+  const files=[...e.target.files];e.target.value='';const n=cur;if(!files.length||!n)return;
+  toast('写真を追加しています…');
+  let ok=0,bad=0;
+  for(const f of files){
+    try{const b=await shrink(f),id=uid();await imgPut(id,b);(n.imgs||(n.imgs=[])).push(id);ok++}catch{bad++}
+  }
+  if(ok){touch(n);persistNow();if(cur===n)renderImgs()}
+  toast(bad?`${bad}枚の写真を追加できませんでした`:`写真を${ok}枚追加しました`);
+});
+$('#imgs').addEventListener('click',e=>{const b=e.target.closest('.ph');if(b)openViewer(b.dataset.id)});
+let vId=null;
+async function openViewer(id){
+  vId=id;const v=$('#viewer');v.querySelector('img').src=await imgURL(id).catch(()=>null)||'';v.hidden=false;
+}
+function closeViewer(){$('#viewer').hidden=true;$('#viewer img').removeAttribute('src');vId=null}
+$('#viewer').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-v]');if(!b||!vId)return;
+  const act=b.dataset.v,id=vId,n=cur;
+  if(act==='close')closeViewer();
+  else if(act==='share'){
+    const blob=blobs[id];if(!blob)return;
+    saveFiles([new File([blob],`${n?fileBase(n):'写真'}.jpg`,{type:blob.type||'image/jpeg'})]);
+  }else if(act==='del'){
+    if(!n||!confirm('この写真を削除しますか？元に戻せません。'))return;
+    n.imgs=(n.imgs||[]).filter(x=>x!==id);if(!n.imgs.length)delete n.imgs;
+    touch(n);persistNow();closeViewer();renderImgs();gcImgs();
+  }
+});
+// 写真の下の余白をタップしたら本文の最後にカーソル
+$('.foot').addEventListener('click',()=>{if(cur&&cur.mode==='memo'){const l=$memo.value.length;$memo.focus();$memo.setSelectionRange(l,l)}});
 
 /* ---------- 起動 ---------- */
 (function init(){
@@ -561,6 +668,7 @@ $('#file').addEventListener('change',async e=>{
   for(const n of Object.values(notes))if(n.deleted&&Date.now()-n.deleted>TRASH_DAYS*DAY){delete notes[n.id];purged=true}
   if(purged)persistNow();
   route();
+  gcImgs();
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){
     const had=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.register('sw.js').then(r=>{

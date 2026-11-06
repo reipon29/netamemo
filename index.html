@@ -2,7 +2,7 @@
 <html lang="ja" data-view="list">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -37,6 +37,7 @@
       <button class="tbtn back" id="btnBack"><svg width="13" height="22" viewBox="0 0 13 22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2 2 11l9 9"/></svg>メモ</button>
       <span class="spacer"></span>
       <div class="seg" id="seg"><button data-m="memo">メモ</button><button data-m="script">台本</button></div>
+      <button class="tbtn" id="btnPhoto" aria-label="写真を追加"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m21 15-4.5-4.5L8 19"/></svg></button>
       <button class="tbtn" id="btnShare" aria-label="共有"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/></svg></button>
       <button class="tbtn" id="btnNoteMenu" aria-label="メニュー"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><circle cx="7.5" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="16.5" cy="12" r=".6" fill="currentColor"/></svg></button>
     </div>
@@ -49,11 +50,14 @@
     <main id="script" class="script"></main>
     <button class="add" id="btnAdd">＋ 行を追加</button>
   </div>
+  <div id="imgs" class="imgs" hidden></div>
   <div class="foot"></div>
 </section>
 
 <dialog id="dlg"><div class="dh"><span id="dlgTitle"></span><button class="tbtn" data-close aria-label="閉じる">✕</button></div><div class="list" id="dlgList"></div></dialog>
 <input type="file" id="file" accept=".txt,.md,.json,text/plain,text/markdown,application/json" multiple hidden>
+<input type="file" id="photo" accept="image/*" multiple hidden>
+<div id="viewer" hidden><img alt=""><div class="vbar"><button data-v="close">閉じる</button><span class="spacer"></span><button data-v="share" aria-label="共有">共有</button><button data-v="del" class="del">削除</button></div></div>
 <div id="toast"></div>
 <div class="banner" id="install" hidden><p>共有ボタン <b>⬆︎</b> →「<b>ホーム画面に追加</b>」でアプリとして使えます</p><button data-x aria-label="閉じる">✕</button></div>
 <div class="banner" id="update" hidden><p>新しいバージョンがあります</p><button class="go" data-reload>更新</button><button data-x aria-label="閉じる">✕</button></div>
