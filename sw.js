@@ -1,5 +1,5 @@
 // オフライン対応：キャッシュを即返し、裏で最新版を取得（次回起動時に反映）
-const CACHE = 'netamemo-v3';
+const CACHE = 'netamemo-v4';
 const ASSETS = ['./', './index.html', './style.css', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
