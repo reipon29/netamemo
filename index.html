@@ -260,12 +260,13 @@ function rowEl(n){
   const d=document.createElement('span');d.className='rd';d.textContent=fmtShort(n.updated);
   s.append(d,preview);b.append(t,s);
   const w=document.createElement('div');w.className='sw';
-  const acts=document.createElement('div');acts.className='acts';
+  const actsL=document.createElement('div');actsL.className='acts l';
+  actsL.innerHTML=`<button class="act" data-act="pin" style="--c:#f59f00"><i>${n.pinned?ICON.unpin:ICON.pin}</i>${n.pinned?'解除':'ピン'}</button>`;
+  const acts=document.createElement('div');acts.className='acts r';
   acts.innerHTML=
-    `<button class="act" data-act="pin" style="--c:#f59f00"><i>${n.pinned?ICON.unpin:ICON.pin}</i>${n.pinned?'解除':'ピン'}</button>`+
     `<button class="act" data-act="share" style="--c:#3b82f6"><i>${ICON.share}</i>共有</button>`+
     `<button class="act" data-act="del" style="--c:#ef4444"><i>${ICON.del}</i>削除</button>`;
-  w.append(acts,b);return w;
+  w.append(actsL,acts,b);return w;
 }
 const svg=p=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const ICON={
@@ -303,15 +304,15 @@ $notes.addEventListener('click',e=>{
   const n=notes[r.dataset.id];if(n)goNote(n);
 });
 
-// 左にスワイプで ピン留め・共有・削除
+// 左にスワイプで 共有・削除、右にスワイプで ピン留め
 let swp=null,openRow=null,swiped=false;
-const actW=r=>r.previousElementSibling.offsetWidth;
-function setX(r,x,anim){r.style.transition=anim?'transform .22s ease-out':'none';r.style.transform=x?`translateX(${x}px)`:'';r.classList.toggle('open',!!x)}
+const actW=(r,side)=>r.parentElement.querySelector('.acts.'+side).offsetWidth;
+function setX(r,x,anim){r.style.transition=anim?'transform .22s ease-out':'none';r.style.transform=x?`translateX(${x}px)`:'';r.classList.toggle('open-r',x<0);r.classList.toggle('open-l',x>0);r.dataset.x=x}
 function closeSwipe(now){if(openRow){setX(openRow,0,!now);openRow=null}}
 $notes.addEventListener('pointerdown',e=>{
   const r=e.target.closest('.row');swiped=false;
   if(openRow&&openRow!==r&&!e.target.closest('.act')){closeSwipe();swiped=!!r}
-  swp=r&&e.isPrimary?{r,x:e.clientX,y:e.clientY,base:r===openRow?-actW(r):0,dx:0,on:false}:null;
+  swp=r&&e.isPrimary?{r,x:e.clientX,y:e.clientY,base:r===openRow?+r.dataset.x||0:0,dx:0,on:false}:null;
 });
 $notes.addEventListener('pointermove',e=>{
   if(!swp)return;
@@ -321,14 +322,15 @@ $notes.addEventListener('pointermove',e=>{
     if(Math.abs(dx)<10)return;
     swp.on=true;lpCancel();try{swp.r.setPointerCapture(e.pointerId)}catch{}
   }
-  const w=actW(swp.r),x=swp.base+dx;
-  swp.dx=dx;setX(swp.r,Math.min(0,x<-w?-w+(x+w)/3:x),false);
+  const wr=actW(swp.r,'r'),wl=actW(swp.r,'l'),x=swp.base+dx;
+  swp.dx=dx;setX(swp.r,x<-wr?-wr+(x+wr)/3:x>wl?wl+(x-wl)/3:x,false);
 });
 function swipeEnd(cancel){
   if(!swp)return;const s=swp;swp=null;if(!s.on)return;
   swiped=true;setTimeout(()=>swiped=false,350);
-  const w=actW(s.r),open=!cancel&&s.base+s.dx<-w/2;
-  if(open){if(openRow&&openRow!==s.r)closeSwipe();openRow=s.r;setX(s.r,-w,true)}
+  const wr=actW(s.r,'r'),wl=actW(s.r,'l'),x=s.base+s.dx;
+  const to=cancel?0:x<-wr/2?-wr:x>wl/2?wl:0;
+  if(to){if(openRow&&openRow!==s.r)closeSwipe();openRow=s.r;setX(s.r,to,true)}
   else{setX(s.r,0,true);if(openRow===s.r)openRow=null}
 }
 $notes.addEventListener('pointerup',()=>swipeEnd(false));
