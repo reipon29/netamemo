@@ -6,6 +6,11 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('gesturechange',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
+const PREF='netamemo.prefs';
+let prefs={};try{prefs=JSON.parse(localStorage.getItem(PREF))||{}}catch{}
+const savePrefs=()=>{try{localStorage.setItem(PREF,JSON.stringify(prefs))}catch{}};
+// ステータス
+const STATUS={idea:['アイデア','#f59f00'],wip:['制作中','#1971c2'],done:['完成','#2f9e44'],drop:['ボツ','#8e8e93']};
 const $notes=$('#notes'),$q=$('#q'),$memo=$('#memo'),$shead=$('#shead'),$script=$('#script'),$dlg=$('#dlg');
 
 /* ---------- 保存 ---------- */
@@ -111,7 +116,7 @@ function fromScript(s){
 function validNote(n){
   if(!n||typeof n.text!=='string')return null;
   const t=Date.now();
-  return{id:String(n.id||uid()),text:n.text,mode:n.mode==='script'?'script':'memo',spk:Array.isArray(n.spk)?n.spk:[],pinned:!!n.pinned,created:n.created||n.updated||t,updated:n.updated||t,...(n.deleted?{deleted:n.deleted}:{})};
+  return{id:String(n.id||uid()),text:n.text,mode:n.mode==='script'?'script':'memo',spk:Array.isArray(n.spk)?n.spk:[],pinned:!!n.pinned,created:n.created||n.updated||t,updated:n.updated||t,...(n.deleted?{deleted:n.deleted}:{}),...(STATUS[n.status]?{status:n.status}:{})};
 }
 
 /* ---------- 画面遷移 ---------- */
@@ -130,7 +135,7 @@ function leaveNote(){
   if(!cur.text.trim()){if(notes[cur.id]){delete notes[cur.id];persistNow()}}
   else flush();
   if(document.activeElement)document.activeElement.blur();
-  cur=null;sc=null;
+  endPractice(false);cur=null;sc=null;
 }
 function showList(){fromList=false;show('list');renderList();scrollTo(0,listY)}
 function goNote(n,focus){
@@ -145,11 +150,16 @@ function goList(){
 function openNote(n){
   if(cur&&cur!==n)leaveNote();
   cur=n;show('note');
-  $('#ndate').textContent=fmtLong(n.updated);
+  setNdate();
   setMode(n.mode||'memo');
   scrollTo(0,0);
 }
+function setNdate(){
+  if(!cur)return;const st=STATUS[cur.status];
+  $('#ndate').textContent=fmtLong(cur.updated)+(st?' ・ '+st[0]:'');
+}
 function setMode(m){
+  endPractice(false);
   cur.mode=m;
   $('#seg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));
   const script=m==='script';
@@ -186,7 +196,11 @@ function bucket(t){
 function renderList(){
   openRow=null;swp=null;
   const q=$q.value.trim().toLowerCase();
-  const all=live(),arr=all.filter(n=>!q||n.text.toLowerCase().includes(q)).sort((a,b)=>b.updated-a.updated);
+  const all=live();
+  if(prefs.filter&&!STATUS[prefs.filter])prefs.filter='';
+  renderFilters(all);
+  const f=prefs.filter;
+  const arr=all.filter(n=>(!q||n.text.toLowerCase().includes(q))&&(!f||n.status===f)).sort((a,b)=>b.updated-a.updated);
   const groups=[],at={};
   const put=(label,n)=>{if(!at[label]){at[label]=[];groups.push([label,at[label]])}at[label].push(n)};
   arr.filter(n=>n.pinned).forEach(n=>put('📌 ピン留め',n));
@@ -197,13 +211,31 @@ function renderList(){
     const c=document.createElement('div');c.className='card';
     c.append(...list.map(rowEl));g.append(h,c);return g;
   }));
-  if(!arr.length){const e=document.createElement('div');e.className='empty';e.textContent=q?`「${$q.value.trim()}」を含むメモはありません`:'メモはありません\n右下のボタンで作成';e.style.whiteSpace='pre-line';$notes.append(e)}
+  if(!arr.length){const e=document.createElement('div');e.className='empty';e.textContent=q?`「${$q.value.trim()}」を含むメモはありません`:prefs.filter?`「${STATUS[prefs.filter][0]}」のメモはありません`:'メモはありません\n右下のボタンで作成';e.style.whiteSpace='pre-line';$notes.append(e)}
   $('#count').textContent=all.length?`${all.length}件のメモ`:'';
 }
+function renderFilters(all){
+  const box=$('#filters'),cnt={};
+  for(const n of all)if(STATUS[n.status])cnt[n.status]=(cnt[n.status]||0)+1;
+  const any=Object.keys(cnt).length>0||!!prefs.filter;
+  box.hidden=!any;if(!any)return;
+  const chip=(k,label,color,num)=>{
+    const b=document.createElement('button');b.className='fchip';b.dataset.f=k;b.setAttribute('aria-pressed',(prefs.filter||'')===k);
+    if(color)b.style.setProperty('--c',color);
+    b.textContent=label;if(num!=null){const m=document.createElement('small');m.textContent=num;b.append(m)}
+    return b;
+  };
+  box.replaceChildren(chip('','すべて'),...Object.entries(STATUS).map(([k,[l,c]])=>chip(k,l,c,cnt[k]||0)));
+}
+$('#filters').addEventListener('click',e=>{
+  const b=e.target.closest('.fchip');if(!b)return;
+  prefs.filter=b.dataset.f===prefs.filter?'':b.dataset.f;savePrefs();renderList();
+});
 function rowEl(n){
   const{title,preview}=titleOf(n);
   const b=document.createElement('button');b.className='row';b.dataset.id=n.id;
   const t=document.createElement('div');t.className='rt';
+  if(STATUS[n.status]){const g=document.createElement('span');g.className='tag st';g.textContent=STATUS[n.status][0];g.style.background=STATUS[n.status][1];t.append(g)}
   if(n.mode==='script'){const g=document.createElement('span');g.className='tag';g.textContent='台本';t.append(g)}
   t.append(title);
   const s=document.createElement('div');s.className='rs';
@@ -290,6 +322,7 @@ function rowMenu(id){
   const n=notes[id];if(!n)return;
   sheet(titleOf(n).title,[
     item(n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;persistNow();renderList()}),
+    item('ステータス',()=>statusSheet(n),{small:STATUS[n.status]?.[0]||'なし',keep:true}),
     item('iPhoneの「メモ」へ送る',()=>shareText(n)),
     item('複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();renderList();toast('複製しました')}),
     item('削除',()=>{trash(n);renderList()},{cls:'danger'})
@@ -320,11 +353,12 @@ function rowEls(ln){
   const c=document.createElement('span');c.textContent='：';
   b.append(n,c);
   const t=document.createElement('textarea');t.className='text';t.rows=1;t.value=ln.text;t.dataset.id=ln.id;t.setAttribute('enterkeyhint','next');
+  if(prac){t.readOnly=true;t.tabIndex=-1;if(ln.sp===prac.sp&&ln.text.trim())t.classList.add('mask')}
   return[b,t];
 }
 function renderScript(){
   lastId=null;lastPos=0;
-  $shead.value=sc.head;autosize($shead);
+  $shead.value=sc.head;autosize($shead);$shead.readOnly=!!prac;
   renderChips();
   $script.replaceChildren(...sc.lines.flatMap(rowEls));
   $script.querySelectorAll('.text').forEach(autosize);
@@ -351,6 +385,7 @@ $script.addEventListener('input',e=>{
 });
 $script.addEventListener('focusin',e=>{
   const t=e.target;if(!t.classList.contains('text'))return;
+  if(prac){t.blur();return}
   lastId=t.dataset.id;
   $script.querySelectorAll('.name.active').forEach(n=>n.classList.remove('active'));
   nameOf(lastId)?.classList.add('active');
@@ -374,7 +409,46 @@ $script.addEventListener('keydown',e=>{
   }else if(e.key==='ArrowUp'&&t.selectionStart===0&&i>0){e.preventDefault();focusLine(sc.lines[i-1].id)}
   else if(e.key==='ArrowDown'&&t.selectionEnd===t.value.length&&i<sc.lines.length-1){e.preventDefault();focusLine(sc.lines[i+1].id,0)}
 });
-$script.addEventListener('click',e=>{const b=e.target.closest('.name');if(b)openLine(b.dataset.id)});
+$script.addEventListener('click',e=>{
+  if(prac){const t=e.target.closest('.text');if(t&&(t.classList.contains('mask')||t.classList.contains('peek'))){t.classList.toggle('mask');t.classList.toggle('peek');updPbar()}return}
+  const b=e.target.closest('.name');if(b)openLine(b.dataset.id);
+});
+$script.addEventListener('mousedown',e=>{if(prac)e.preventDefault()});
+
+/* ---------- 練習モード：選んだ話者のセリフを隠す。タップでめくる ---------- */
+let prac=null;
+function practiceSheet(){
+  const pick=document.createElement('div');pick.className='pick';
+  for(const s of sc.speakers){
+    const c=document.createElement('button');c.className='chip';c.textContent=s.name;c.style.color=s.color;
+    c.addEventListener('click',()=>{$dlg.close();startPractice(s.id)});pick.append(c);
+  }
+  sheet('練習モード',[noteEl('セリフを隠す話者を選んでください。隠したセリフはタップでめくれます。'),pick]);
+}
+function startPractice(sp){
+  if(document.activeElement)document.activeElement.blur();
+  prac={sp};$('#vNote').classList.add('practice');$('#pbar').hidden=false;
+  renderScript();updPbar();
+}
+function endPractice(render=true){
+  if(!prac)return;prac=null;
+  $('#vNote').classList.remove('practice');$('#pbar').hidden=true;
+  if(render&&sc)renderScript();
+}
+function updPbar(){
+  if(!prac)return;const s=spk(prac.sp);
+  const hid=$script.querySelectorAll('.text.mask').length,all=hid+$script.querySelectorAll('.text.peek').length;
+  const n=$('#pinfo');n.replaceChildren();
+  const b=document.createElement('b');b.textContent=s.name;b.style.color=s.color;
+  n.append(b,`のセリフ ${all-hid}/${all}`);
+  $('#pAll').textContent=hid?'全部めくる':'全部隠す';
+}
+$('#pAll').addEventListener('click',()=>{
+  const hid=$script.querySelectorAll('.text.mask').length;
+  $script.querySelectorAll('.text.mask,.text.peek').forEach(t=>{t.classList.toggle('mask',!hid);t.classList.toggle('peek',!!hid)});
+  updPbar();
+});
+$('#pEnd').addEventListener('click',()=>endPractice());
 
 let wasEditing=false;
 $('#speakers').addEventListener('pointerdown',e=>{wasEditing=!!document.activeElement&&document.activeElement.classList.contains('text');if(e.target.closest('.chip'))e.preventDefault()});
@@ -461,36 +535,145 @@ function item(label,fn,opt={}){
 function noteEl(text){const d=document.createElement('div');d.className='note';d.textContent=text;return d}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2200)}
 
+/* ---------- ポップオーバーメニュー（Liquid Glass 風） ---------- */
+const sv=d=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const MI={
+  timer:sv('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>'),
+  eye:sv('<path d="M3 12s3.5-6.5 9-6.5S21 12 21 12s-3.5 6.5-9 6.5S3 12 3 12z"/><circle cx="12" cy="12" r="2.8"/><path d="M4 4l16 16"/>'),
+  flag:sv('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
+  script:sv('<path d="M7 7h1M7 12h1M7 17h1M11 7h6M11 12h6M11 17h4"/><rect x="3.5" y="3" width="17" height="18" rx="3"/>'),
+  clip:sv('<rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 4.5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1z"/><path d="M9 11h6M9 15h4"/>'),
+  import:sv('<path d="M12 3v11M7.5 9.5 12 14l4.5-4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'),
+  export:sv('<path d="M12 14V3M7.5 7.5 12 3l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>'),
+  trash:sv('<path d="M4 6.5h16M9.5 6.5V4.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2"/><path d="M6 6.5l1 13a1.5 1.5 0 0 0 1.5 1.4h7a1.5 1.5 0 0 0 1.5-1.4l1-13M10 10.5v6M14 10.5v6"/>'),
+  reload:sv('<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>'),
+  pin:sv('<path d="M9 3.5h6l-1 6 3.5 3.5h-11L10 9.5z"/><path d="M12 13v7.5"/>'),
+  copy:sv('<rect x="8" y="8" width="12" height="13" rx="2.5"/><path d="M16 8V5.5A2.5 2.5 0 0 0 13.5 3h-7A2.5 2.5 0 0 0 4 5.5v8A2.5 2.5 0 0 0 6.5 16H8"/>'),
+  replace:sv('<path d="M4 8h13M13.5 4.5 17 8l-3.5 3.5"/><path d="M20 16H7M10.5 12.5 7 16l3.5 3.5"/>'),
+  save:sv('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 14.5 12 17l2.5-2.5"/>'),
+  dup:sv('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M14 11.5v5M11.5 14h5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/>')
+};
+const mi=(icon,label,fn,opt={})=>({icon,label,fn,...opt});
+let pop=null;
+function closePop(now){
+  if(!pop)return;const{p,scrim}=pop;pop=null;scrim.remove();
+  if(now){p.remove();return}
+  p.classList.remove('on');p.classList.add('out');setTimeout(()=>p.remove(),220);
+}
+function popMenu(anchor,groups){
+  closePop(true);
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  const scrim=document.createElement('div');scrim.className='pop-scrim';
+  const p=document.createElement('div');p.className='pop';p.setAttribute('role','menu');
+  groups.filter(g=>g.length).forEach((g,gi)=>{
+    if(gi){const d=document.createElement('div');d.className='pop-sep';p.append(d)}
+    for(const it of g){
+      const b=document.createElement('button');b.className='pop-item'+(it.cls?' '+it.cls:'');b.setAttribute('role','menuitem');
+      const t=document.createElement('span');t.className='pop-t';
+      const l=document.createElement('span');l.textContent=it.label;t.append(l);
+      if(it.small){const m=document.createElement('small');m.textContent=it.small;t.append(m)}
+      const i=document.createElement('i');i.innerHTML=MI[it.icon]||'';
+      b.append(i,t);
+      b.addEventListener('click',()=>{closePop();it.fn()});
+      p.append(b);
+    }
+  });
+  scrim.addEventListener('click',()=>closePop());
+  document.body.append(scrim,p);
+  const r=anchor.getBoundingClientRect(),vw=document.documentElement.clientWidth;
+  const right=Math.max(10,vw-r.right),top=r.bottom+6;
+  p.style.right=right+'px';p.style.top=top+'px';
+  p.style.maxHeight=`calc(100dvh - ${top+12}px - env(safe-area-inset-bottom))`;
+  const left=vw-right-p.offsetWidth;
+  p.style.transformOrigin=`${r.left+r.width/2-left}px -10px`;
+  pop={p,scrim};
+  p.getBoundingClientRect();p.classList.add('on');
+}
+addEventListener('keydown',e=>{if(e.key==='Escape'&&pop)closePop()});
+addEventListener('popstate',()=>closePop(true));
+
+/* ---------- 読み上げ時間 ---------- */
+const SPEEDS=[[300,'ゆっくり'],[350,'ふつう'],[400,'速め']];
+const cpm=()=>SPEEDS.some(([v])=>v===prefs.cpm)?prefs.cpm:350;
+// 空白と（）内のト書きは数えない
+const spoken=t=>t.replace(/[（(][^（）()]*[）)]/g,'').replace(/\s/g,'').length;
+function fmtDur(chars){
+  if(!chars)return'0秒';
+  const sec=Math.max(5,Math.round(chars/cpm()*60/5)*5),m=Math.floor(sec/60),r=sec%60;
+  return m?`${m}分${r?r+'秒':''}`:`${r}秒`;
+}
+function noteChars(n){
+  if(n===cur&&sc)return sc.lines.reduce((a,l)=>a+spoken(l.text),0);
+  return spoken(n.text);
+}
+function timeSheet(){
+  const n=cur,total=noteChars(n),rows=[];
+  const head=document.createElement('div');head.className='dur';
+  head.innerHTML='<b></b><small></small>';
+  head.querySelector('b').textContent='約 '+fmtDur(total);
+  head.querySelector('small').textContent=`${total.toLocaleString()}字 ・ 1分あたり${cpm()}字`;
+  rows.push(head);
+  if(sc){
+    const box=document.createElement('div');box.className='durs';
+    for(const s of sc.speakers){
+      const c=sc.lines.filter(l=>l.sp===s.id).reduce((a,l)=>a+spoken(l.text),0);
+      const r=document.createElement('div');
+      const nm=document.createElement('b');nm.textContent=s.name;nm.style.color=s.color;
+      const v=document.createElement('span');v.textContent=`${c.toLocaleString()}字（${total?Math.round(c/total*100):0}%）`;
+      r.append(nm,v);box.append(r);
+    }
+    rows.push(box);
+  }
+  rows.push(...SPEEDS.map(([v,l])=>item((v===cpm()?'✓ ':'　 ')+l,()=>{prefs.cpm=v;savePrefs();timeSheet()},{small:v+'字/分',keep:true})));
+  rows.push(noteEl('空白と（）内のト書きは数えません。間や笑い待ちは含まないので、実際は少し長くなります。'));
+  sheet('読み上げ時間',rows);
+}
+
+/* ---------- ステータス ---------- */
+function statusSheet(n){
+  const set=k=>()=>{
+    if(k)n.status=k;else delete n.status;
+    notes[n.id]=n;persistNow();
+    if(n===cur)setNdate();else renderList();
+  };
+  sheet('ステータス',[
+    ...Object.entries(STATUS).map(([k,[l,c]])=>{const b=item(l,set(k),{small:n.status===k?'✓':''});b.prepend(Object.assign(document.createElement('i'),{className:'sdot',style:`background:${c}`}));return b}),
+    item('なし',set(''),{small:n.status?'':'✓'})
+  ]);
+}
+
 /* ---------- メニュー ---------- */
-$('#btnListMenu').addEventListener('click',()=>{
+$('#btnListMenu').addEventListener('click',e=>{
   const nTrash=Object.values(notes).filter(n=>n.deleted).length;
-  sheet('メニュー',[
-    item('新規メモ',()=>goNote(newNote(),true)),
-    item('新規台本',()=>goNote(newNote('','script'),true)),
-    item('クリップボードから新規メモ',async()=>{const t=await readClip();if(t==null)return;const n=newNote(t,looksLikeScript(t)?'script':'memo');touch(n);persistNow();goNote(n)}),
-    item('ファイルを読み込む（.txt / .json）',()=>$('#file').click()),
-    item('すべて .txt で書き出し',exportAllTxt,{small:'ファイルAppへ'}),
-    item('バックアップを書き出し（.json）',exportBackup),
-    item('最近削除した項目',openTrash,{small:nTrash?nTrash+'件':''}),
-    item('最新版に更新',forceUpdate,{small:'メモは消えません'}),
-    noteEl('iPhoneの「メモ」へは、各メモの共有ボタン →「メモ」で送れます。「メモ」から取り込むときは、全文をコピーして「クリップボードから新規メモ」を使ってください。')
+  popMenu(e.currentTarget,[
+    [mi('script','新規台本',()=>goNote(newNote('','script'),true)),
+     mi('clip','クリップボードから新規メモ',async()=>{const t=await readClip();if(t==null)return;const n=newNote(t,looksLikeScript(t)?'script':'memo');touch(n);persistNow();goNote(n)},{small:'「メモ」の全文コピーを取り込み'})],
+    [mi('import','読み込み・復元',()=>$('#file').click(),{small:'.txt / バックアップ .json'}),
+     mi('export','書き出し',()=>sheet('書き出し',[
+       item('すべて .txt で書き出し',exportAllTxt,{small:'ファイルAppへ'}),
+       item('バックアップを書き出し',exportBackup,{small:'.json（復元用）'})
+     ]),{small:'.txt / バックアップ .json'})],
+    [mi('trash','最近削除した項目',openTrash,{small:nTrash?nTrash+'件':''}),
+     mi('reload','最新版に更新',forceUpdate,{small:'メモは消えません'})]
   ]);
 });
 $('#btnShare').addEventListener('click',()=>shareText(cur));
-$('#btnNoteMenu').addEventListener('click',()=>{
+$('#btnNoteMenu').addEventListener('click',e=>{
   const n=cur;
-  sheet(titleOf(n).title,[
-    item(n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;notes[n.id]=n;schedule();toast(n.pinned?'ピン留めしました':'ピン留めを解除しました')}),
-    item('iPhoneの「メモ」へ送る',()=>shareText(n)),
-    item('テキストをコピー',async()=>{try{await navigator.clipboard.writeText(n.text);toast('コピーしました')}catch{toast('コピーできませんでした')}}),
-    item('クリップボードの内容で置き換え',async()=>{
-      const t=await readClip();if(t==null)return;
-      if(n.text.trim()&&!confirm('このメモの内容を、クリップボードの内容で置き換えますか？'))return;
-      n.text=t;touch(n);persistNow();setMode(n.mode);toast('置き換えました');
-    }),
-    item('.txt ファイルで保存',()=>saveFiles([new File([n.text],fileBase(n)+'.txt',{type:'text/plain'})])),
-    item('複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();history.replaceState(null,'','#/n/'+c.id);openNote(c);toast('複製しました')}),
-    item('削除',()=>{if(!n.text.trim()){goList();return}trash(n);goList()},{cls:'danger'})
+  popMenu(e.currentTarget,[
+    [mi('pin',n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;notes[n.id]=n;schedule();toast(n.pinned?'ピン留めしました':'ピン留めを解除しました')}),
+     mi('flag','ステータス',()=>statusSheet(n),{small:STATUS[n.status]?.[0]||'なし'})],
+    [mi('timer','読み上げ 約'+fmtDur(noteChars(n)),timeSheet,{small:noteChars(n).toLocaleString()+'字'}),
+     ...(n.mode==='script'?[prac?mi('eye','練習モードを終了',()=>endPractice()):mi('eye','練習モード',practiceSheet,{small:'セリフを隠して覚える'})]:[])],
+    [mi('copy','テキストをコピー',async()=>{try{await navigator.clipboard.writeText(n.text);toast('コピーしました')}catch{toast('コピーできませんでした')}}),
+     mi('save','.txt ファイルで保存',()=>saveFiles([new File([n.text],fileBase(n)+'.txt',{type:'text/plain'})])),
+     mi('dup','複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();history.replaceState(null,'','#/n/'+c.id);openNote(c);toast('複製しました')})],
+    [mi('replace','クリップボードで置き換え',async()=>{
+       const t=await readClip();if(t==null)return;
+       if(n.text.trim()&&!confirm('このメモの内容を、クリップボードの内容で置き換えますか？'))return;
+       n.text=t;touch(n);persistNow();setMode(n.mode);toast('置き換えました');
+     })],
+    [mi('trash','削除',()=>{if(!n.text.trim()){goList();return}trash(n);goList()},{cls:'danger'})]
   ]);
 });
 

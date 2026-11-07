@@ -23,6 +23,7 @@
     </div>
     <h1>ネタメモ</h1>
     <input id="q" type="search" placeholder="検索" autocomplete="off" enterkeyhint="search">
+    <div id="filters" hidden></div>
   </header>
   <div id="notes"></div>
   <footer class="tb">
@@ -47,6 +48,7 @@
         <button data-t="kakko" aria-label="丸括弧">（）</button>
       </div>
     </div>
+    <div id="pbar" hidden><span id="pinfo"></span><button id="pAll">全部めくる</button><button id="pEnd">終了</button></div>
   </header>
   <div id="ndate"></div>
   <textarea id="memo" class="ta" placeholder="メモを入力" autocomplete="off"></textarea>
