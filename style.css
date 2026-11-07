@@ -68,20 +68,24 @@ svg{display:block}
 .foot{height:calc(40vh + env(safe-area-inset-bottom))}
 
 /* ---------- シート ---------- */
-dialog{border:0;border-radius:16px;padding:0;width:min(92vw,420px);max-height:80vh;background:var(--card);color:var(--fg);box-shadow:0 10px 40px rgba(0,0,0,.25)}
-dialog::backdrop{background:rgba(0,0,0,.35)}
-.dh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 6px 4px 16px;font-weight:700}
+dialog{border:0;border-radius:28px;padding:4px 0 8px;width:min(92vw,400px);max-height:80vh;background:var(--glass);-webkit-backdrop-filter:blur(28px) saturate(190%);backdrop-filter:blur(28px) saturate(190%);color:var(--fg);box-shadow:0 18px 50px rgba(0,0,0,.22),inset 0 1px 0 var(--glass-hi),inset 0 0 0 .5px var(--glass-edge)}
+dialog[open]{animation:dlgIn .32s cubic-bezier(.3,1.3,.5,1)}
+@keyframes dlgIn{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
+dialog::backdrop{background:rgba(0,0,0,.18)}
+.dh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 4px 22px;font-size:17px;font-weight:700}
 .dh span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dh .tbtn{color:var(--muted)}
 .list{overflow-y:auto;max-height:calc(80vh - 60px)}
-.item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:13px 16px;font-size:16px;border:0;border-top:1px solid var(--line);background:none}
-.item:active{background:var(--hl)}
+.item{display:flex;align-items:center;gap:8px;width:calc(100% - 16px);margin:0 8px;text-align:left;padding:12px 14px;font-size:17px;border:0;border-radius:18px;background:none;position:relative}
+.item+.item::before{content:"";position:absolute;top:0;left:14px;right:14px;border-top:.5px solid var(--glass-sep)}
+.item:active{background:var(--glass-press)}
+.item:active::before,.item:active+.item::before{opacity:0}
 .item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item small{color:var(--muted);margin-left:auto;font-size:12px;white-space:nowrap}
 .item.danger{color:var(--danger)}
 .note{padding:4px 16px 12px;font-size:13px;color:var(--muted);line-height:1.5}
-.sprow{display:flex;gap:8px;align-items:center;padding:8px 16px;border-top:1px solid var(--line)}
-.sprow input{flex:1;min-width:0;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:inherit}
+.sprow{display:flex;gap:8px;align-items:center;padding:8px 16px}
+.sprow input{flex:1;min-width:0;font-size:16px;padding:9px 12px;border:0;border-radius:12px;background:var(--glass-press);color:inherit}
 .sprow .tbtn{color:var(--danger)}
 .dot{width:32px;height:32px;border-radius:50%;border:0;flex:none}
 .pick{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px 12px}
@@ -101,6 +105,17 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .pop-t{display:flex;flex-direction:column;min-width:0}
 .pop-t span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pop-t small{font-size:13px;color:var(--muted);margin-top:1px;white-space:nowrap}
+.pop-t{flex:1}
+.pop-item .chev{flex:none;color:var(--muted);margin-left:6px}
+.pop-item .chk{flex:none;color:var(--accent);margin-left:8px}
+.pop-item i .sdot{width:12px;height:12px}
+.pop-back{display:flex;align-items:center;gap:10px;width:calc(100% - 16px);margin:0 8px;padding:8px 14px;border:0;border-radius:18px;background:none;color:var(--fg);font-size:17px;font-weight:700;text-align:left}
+.pop-back .chev{transform:scaleX(-1);color:var(--accent)}
+.pop-back:active{background:var(--glass-press)}
+.pop-page.in-r{animation:pgR .28s cubic-bezier(.2,.9,.3,1)}
+.pop-page.in-l{animation:pgL .28s cubic-bezier(.2,.9,.3,1)}
+@keyframes pgR{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes pgL{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.pop,.pop.out{transition:opacity .15s}.pop{transform:none}}
 /* ---------- ステータス ---------- */
 #filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:10px -16px 0;padding:0 16px 2px}
@@ -113,12 +128,14 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .sdot{width:12px;height:12px;border-radius:50%;flex:none}
 
 /* ---------- 読み上げ時間 ---------- */
-.dur{display:flex;flex-direction:column;align-items:center;padding:6px 16px 14px}
-.dur b{font-size:30px;letter-spacing:.02em}
-.dur small{font-size:13px;color:var(--muted);margin-top:2px}
-.durs{border-top:1px solid var(--line);padding:6px 16px}
-.durs div{display:flex;justify-content:space-between;padding:5px 0;font-size:15px}
-.durs span{color:var(--muted)}
+.dur{display:flex;flex-direction:column;align-items:center;padding:8px 22px 10px}
+.dur b{font-size:32px;font-weight:700;letter-spacing:.01em}
+.dur small{font-size:13px;color:var(--muted);margin-top:1px}
+.durs{padding:4px 22px 6px}
+.durs div{display:grid;grid-template-columns:auto 1fr 3em;align-items:center;gap:10px;padding:5px 0;font-size:15px}
+.durs i{height:6px;border-radius:3px;background:var(--glass-sep);position:relative;overflow:hidden}
+.durs i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w);background:var(--c);border-radius:3px}
+.durs span{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
 
 /* ---------- 練習モード ---------- */
 #pbar{display:flex;align-items:center;gap:6px;padding:6px 10px 10px 14px;border-bottom:1px solid var(--line)}

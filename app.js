@@ -320,12 +320,13 @@ $notes.addEventListener('pointercancel',()=>swipeEnd(true));
 addEventListener('scroll',()=>{if(openRow&&!swp)closeSwipe()},{passive:true});
 function rowMenu(id){
   const n=notes[id];if(!n)return;
-  sheet(titleOf(n).title,[
-    item(n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;persistNow();renderList()}),
-    item('ステータス',()=>statusSheet(n),{small:STATUS[n.status]?.[0]||'なし',keep:true}),
-    item('iPhoneの「メモ」へ送る',()=>shareText(n)),
-    item('複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();renderList();toast('複製しました')}),
-    item('削除',()=>{trash(n);renderList()},{cls:'danger'})
+  const row=$notes.querySelector(`.row[data-id="${id}"]`);if(!row)return;
+  popMenu(row,[
+    [mi('pin',n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;persistNow();renderList()}),
+     mi('flag','ステータス',null,{small:STATUS[n.status]?.[0]||'なし',sub:()=>statusGroups(n)})],
+    [mi('share','共有',()=>shareText(n)),
+     mi('dup','複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();renderList();toast('複製しました')})],
+    [mi('trash','削除',()=>{trash(n);renderList()},{cls:'danger'})]
   ]);
 }
 
@@ -417,14 +418,7 @@ $script.addEventListener('mousedown',e=>{if(prac)e.preventDefault()});
 
 /* ---------- 練習モード：選んだ話者のセリフを隠す。タップでめくる ---------- */
 let prac=null;
-function practiceSheet(){
-  const pick=document.createElement('div');pick.className='pick';
-  for(const s of sc.speakers){
-    const c=document.createElement('button');c.className='chip';c.textContent=s.name;c.style.color=s.color;
-    c.addEventListener('click',()=>{$dlg.close();startPractice(s.id)});pick.append(c);
-  }
-  sheet('練習モード',[noteEl('セリフを隠す話者を選んでください。隠したセリフはタップでめくれます。'),pick]);
-}
+const practiceGroups=()=>[sc.speakers.map(s=>mi(null,s.name,()=>startPractice(s.id),{dot:s.color}))];
 function startPractice(sp){
   if(document.activeElement)document.activeElement.blur();
   prac={sp};$('#vNote').classList.add('practice');$('#pbar').hidden=false;
@@ -538,6 +532,8 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');
 /* ---------- ポップオーバーメニュー（Liquid Glass 風） ---------- */
 const sv=d=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const MI={
+  share:sv('<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/>'),
+  backup:sv('<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>'),
   timer:sv('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>'),
   eye:sv('<path d="M3 12s3.5-6.5 9-6.5S21 12 21 12s-3.5 6.5-9 6.5S3 12 3 12z"/><circle cx="12" cy="12" r="2.8"/><path d="M4 4l16 16"/>'),
   flag:sv('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
@@ -554,39 +550,64 @@ const MI={
   dup:sv('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M14 11.5v5M11.5 14h5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/>')
 };
 const mi=(icon,label,fn,opt={})=>({icon,label,fn,...opt});
+const CHEV='<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m1.5 1.5 5 5.5-5 5.5"/></svg>';
+const CHECK='<svg class="chk" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 8.5 3.5 3.5 7.5-8"/></svg>';
 let pop=null;
 function closePop(now){
   if(!pop)return;const{p,scrim}=pop;pop=null;scrim.remove();
   if(now){p.remove();return}
   p.classList.remove('on');p.classList.add('out');setTimeout(()=>p.remove(),220);
 }
+function popItem(it){
+  const b=document.createElement('button');b.className='pop-item'+(it.cls?' '+it.cls:'');b.setAttribute('role','menuitem');
+  if(it.icon){const i=document.createElement('i');i.innerHTML=MI[it.icon]||'';b.append(i)}
+  else if(it.dot){const i=document.createElement('i');const d=document.createElement('span');d.className='sdot';d.style.background=it.dot;i.append(d);b.append(i)}
+  const t=document.createElement('span');t.className='pop-t';
+  const l=document.createElement('span');l.textContent=it.label;t.append(l);
+  if(it.small){const m=document.createElement('small');m.textContent=it.small;t.append(m)}
+  b.append(t);
+  if(it.check)b.insertAdjacentHTML('beforeend',CHECK);
+  if(it.sub)b.insertAdjacentHTML('beforeend',CHEV);
+  b.addEventListener('click',()=>{
+    if(it.sub){pop.stack.push({title:it.subTitle||it.label,groups:it.sub});renderPage(1);return}
+    if(it.keep){it.fn();renderPage(0);return}
+    closePop();it.fn();
+  });
+  return b;
+}
+function renderPage(dir){
+  const pg=pop.stack[pop.stack.length-1];
+  const el=document.createElement('div');el.className='pop-page'+(dir>0?' in-r':dir<0?' in-l':'');
+  if(pop.stack.length>1){
+    const b=document.createElement('button');b.className='pop-back';
+    b.innerHTML=CHEV;const t=document.createElement('span');t.textContent=pg.title;b.append(t);
+    b.addEventListener('click',()=>{pop.stack.pop();renderPage(-1)});
+    el.append(b);
+  }
+  const groups=(typeof pg.groups==='function'?pg.groups():pg.groups).filter(g=>g.length);
+  groups.forEach((g,gi)=>{
+    if(gi||pop.stack.length>1){const d=document.createElement('div');d.className='pop-sep';el.append(d)}
+    for(const it of g)el.append(it instanceof Node?it:popItem(it));
+  });
+  pop.p.replaceChildren(el);
+}
 function popMenu(anchor,groups){
   closePop(true);
   if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
   const scrim=document.createElement('div');scrim.className='pop-scrim';
   const p=document.createElement('div');p.className='pop';p.setAttribute('role','menu');
-  groups.filter(g=>g.length).forEach((g,gi)=>{
-    if(gi){const d=document.createElement('div');d.className='pop-sep';p.append(d)}
-    for(const it of g){
-      const b=document.createElement('button');b.className='pop-item'+(it.cls?' '+it.cls:'');b.setAttribute('role','menuitem');
-      const t=document.createElement('span');t.className='pop-t';
-      const l=document.createElement('span');l.textContent=it.label;t.append(l);
-      if(it.small){const m=document.createElement('small');m.textContent=it.small;t.append(m)}
-      const i=document.createElement('i');i.innerHTML=MI[it.icon]||'';
-      b.append(i,t);
-      b.addEventListener('click',()=>{closePop();it.fn()});
-      p.append(b);
-    }
-  });
   scrim.addEventListener('click',()=>closePop());
   document.body.append(scrim,p);
-  const r=anchor.getBoundingClientRect(),vw=document.documentElement.clientWidth;
-  const right=Math.max(10,vw-r.right),top=r.bottom+6;
-  p.style.right=right+'px';p.style.top=top+'px';
-  p.style.maxHeight=`calc(100dvh - ${top+12}px - env(safe-area-inset-bottom))`;
+  pop={p,scrim,stack:[{groups}]};renderPage(0);
+  const r=anchor.getBoundingClientRect(),vw=document.documentElement.clientWidth,vh=innerHeight;
+  const right=Math.max(10,vw-r.right),h=p.offsetHeight;
+  // 下に入りきらなければ上に出す
+  const up=r.bottom+6+h>vh-12&&r.top-6-h>12;
+  p.style.right=right+'px';
+  if(up){p.style.bottom=(vh-r.top+6)+'px';p.style.maxHeight=(r.top-18)+'px'}
+  else{p.style.top=(r.bottom+6)+'px';p.style.maxHeight=`calc(100dvh - ${r.bottom+18}px - env(safe-area-inset-bottom))`}
   const left=vw-right-p.offsetWidth;
-  p.style.transformOrigin=`${r.left+r.width/2-left}px -10px`;
-  pop={p,scrim};
+  p.style.transformOrigin=`${Math.min(p.offsetWidth-20,Math.max(20,r.left+r.width/2-left))}px ${up?'calc(100% + 10px)':'-10px'}`;
   p.getBoundingClientRect();p.classList.add('on');
 }
 addEventListener('keydown',e=>{if(e.key==='Escape'&&pop)closePop()});
@@ -606,40 +627,40 @@ function noteChars(n){
   if(n===cur&&sc)return sc.lines.reduce((a,l)=>a+spoken(l.text),0);
   return spoken(n.text);
 }
-function timeSheet(){
-  const n=cur,total=noteChars(n),rows=[];
+function timeGroups(){
+  const total=noteChars(cur);
   const head=document.createElement('div');head.className='dur';
-  head.innerHTML='<b></b><small></small>';
-  head.querySelector('b').textContent='約 '+fmtDur(total);
-  head.querySelector('small').textContent=`${total.toLocaleString()}字 ・ 1分あたり${cpm()}字`;
-  rows.push(head);
-  if(sc){
+  const b=document.createElement('b');b.textContent='約 '+fmtDur(total);
+  const sm=document.createElement('small');sm.textContent=total.toLocaleString()+'字';
+  head.append(b,sm);
+  const g=[[head]];
+  if(sc&&sc.speakers.length>1){
     const box=document.createElement('div');box.className='durs';
     for(const s of sc.speakers){
       const c=sc.lines.filter(l=>l.sp===s.id).reduce((a,l)=>a+spoken(l.text),0);
       const r=document.createElement('div');
       const nm=document.createElement('b');nm.textContent=s.name;nm.style.color=s.color;
-      const v=document.createElement('span');v.textContent=`${c.toLocaleString()}字（${total?Math.round(c/total*100):0}%）`;
-      r.append(nm,v);box.append(r);
+      const bar=document.createElement('i');bar.style.setProperty('--w',(total?c/total*100:0)+'%');bar.style.setProperty('--c',s.color);
+      const v=document.createElement('span');v.textContent=(total?Math.round(c/total*100):0)+'%';
+      r.append(nm,bar,v);box.append(r);
     }
-    rows.push(box);
+    g.push([box]);
   }
-  rows.push(...SPEEDS.map(([v,l])=>item((v===cpm()?'✓ ':'　 ')+l,()=>{prefs.cpm=v;savePrefs();timeSheet()},{small:v+'字/分',keep:true})));
-  rows.push(noteEl('空白と（）内のト書きは数えません。間や笑い待ちは含まないので、実際は少し長くなります。'));
-  sheet('読み上げ時間',rows);
+  g.push(SPEEDS.map(([v,l])=>mi(null,l,()=>{prefs.cpm=v;savePrefs()},{small:`1分あたり${v}字`,check:v===cpm(),keep:true})));
+  return g;
 }
 
 /* ---------- ステータス ---------- */
-function statusSheet(n){
+function statusGroups(n){
   const set=k=>()=>{
     if(k)n.status=k;else delete n.status;
     notes[n.id]=n;persistNow();
     if(n===cur)setNdate();else renderList();
   };
-  sheet('ステータス',[
-    ...Object.entries(STATUS).map(([k,[l,c]])=>{const b=item(l,set(k),{small:n.status===k?'✓':''});b.prepend(Object.assign(document.createElement('i'),{className:'sdot',style:`background:${c}`}));return b}),
-    item('なし',set(''),{small:n.status?'':'✓'})
-  ]);
+  return[
+    Object.entries(STATUS).map(([k,[l,c]])=>mi(null,l,set(k),{dot:c,check:n.status===k})),
+    [mi(null,'なし',set(''),{check:!n.status})]
+  ];
 }
 
 /* ---------- メニュー ---------- */
@@ -649,10 +670,10 @@ $('#btnListMenu').addEventListener('click',e=>{
     [mi('script','新規台本',()=>goNote(newNote('','script'),true)),
      mi('clip','クリップボードから新規メモ',async()=>{const t=await readClip();if(t==null)return;const n=newNote(t,looksLikeScript(t)?'script':'memo');touch(n);persistNow();goNote(n)},{small:'「メモ」の全文コピーを取り込み'})],
     [mi('import','読み込み・復元',()=>$('#file').click(),{small:'.txt / バックアップ .json'}),
-     mi('export','書き出し',()=>sheet('書き出し',[
-       item('すべて .txt で書き出し',exportAllTxt,{small:'ファイルAppへ'}),
-       item('バックアップを書き出し',exportBackup,{small:'.json（復元用）'})
-     ]),{small:'.txt / バックアップ .json'})],
+     mi('export','書き出し',null,{sub:()=>[[
+       mi('save','すべて .txt で書き出し',exportAllTxt,{small:'ファイルAppへ'}),
+       mi('backup','バックアップを書き出し',exportBackup,{small:'.json（復元用）'})
+     ]]})],
     [mi('trash','最近削除した項目',openTrash,{small:nTrash?nTrash+'件':''}),
      mi('reload','最新版に更新',forceUpdate,{small:'メモは消えません'})]
   ]);
@@ -662,9 +683,9 @@ $('#btnNoteMenu').addEventListener('click',e=>{
   const n=cur;
   popMenu(e.currentTarget,[
     [mi('pin',n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;notes[n.id]=n;schedule();toast(n.pinned?'ピン留めしました':'ピン留めを解除しました')}),
-     mi('flag','ステータス',()=>statusSheet(n),{small:STATUS[n.status]?.[0]||'なし'})],
-    [mi('timer','読み上げ 約'+fmtDur(noteChars(n)),timeSheet,{small:noteChars(n).toLocaleString()+'字'}),
-     ...(n.mode==='script'?[prac?mi('eye','練習モードを終了',()=>endPractice()):mi('eye','練習モード',practiceSheet,{small:'セリフを隠して覚える'})]:[])],
+     mi('flag','ステータス',null,{small:STATUS[n.status]?.[0]||'なし',sub:()=>statusGroups(n)})],
+    [mi('timer','読み上げ時間',null,{small:'約'+fmtDur(noteChars(n)),sub:timeGroups}),
+     ...(n.mode==='script'?[prac?mi('eye','練習モードを終了',()=>endPractice()):mi('eye','練習モード',null,{small:'セリフを隠して覚える',subTitle:'隠す話者',sub:practiceGroups})]:[])],
     [mi('copy','テキストをコピー',async()=>{try{await navigator.clipboard.writeText(n.text);toast('コピーしました')}catch{toast('コピーできませんでした')}}),
      mi('save','.txt ファイルで保存',()=>saveFiles([new File([n.text],fileBase(n)+'.txt',{type:'text/plain'})])),
      mi('dup','複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();history.replaceState(null,'','#/n/'+c.id);openNote(c);toast('複製しました')})],
