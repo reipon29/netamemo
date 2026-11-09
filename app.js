@@ -11,7 +11,7 @@ let prefs={};try{prefs=JSON.parse(localStorage.getItem(PREF))||{}}catch{}
 const savePrefs=()=>{try{localStorage.setItem(PREF,JSON.stringify(prefs))}catch{}};
 // ステータス
 const STATUS={idea:['アイデア','#f59f00'],wip:['制作中','#1971c2'],done:['完成','#2f9e44'],drop:['ボツ','#8e8e93']};
-const $notes=$('#notes'),$q=$('#q'),$memo=$('#memo'),$shead=$('#shead'),$script=$('#script'),$dlg=$('#dlg');
+const $notes=$('#notes'),$q=$('#q'),$memo=$('#memo'),$shead=$('#shead'),$script=$('#script');
 
 /* ---------- 保存 ---------- */
 let notes={},saveTimer=null;
@@ -546,7 +546,7 @@ $tools.addEventListener('click',e=>{
 });
 $('#speakers').addEventListener('click',e=>{
   const c=e.target.closest('.chip');if(!c)return;
-  if(c.dataset.edit){openSpk();return}
+  if(c.dataset.edit){openSpk(c);return}
   const ln=lastId&&sc.lines[idx(lastId)];
   if(ln){ln.sp=c.dataset.sp;refreshNames();sync();if(wasEditing)focusLine(ln.id,lastPos)}
   else addLine(c.dataset.sp);
@@ -562,58 +562,47 @@ $('#btnAdd').addEventListener('click',()=>{
   addLine();
 });
 function openLine(id){
-  const i=idx(id),ln=sc.lines[i];
-  const pick=document.createElement('div');pick.className='pick';
-  for(const s of sc.speakers){
-    const c=document.createElement('button');c.className='chip';c.textContent=s.name;c.style.color=s.color;
-    if(s.id===ln.sp){c.style.background=s.color;c.style.color='#fff';c.style.borderColor=s.color}
-    c.addEventListener('click',()=>{ln.sp=s.id;refreshNames();sync();$dlg.close()});pick.append(c);
-  }
+  const i=idx(id),ln=sc.lines[i],anchor=nameOf(id);if(!ln||!anchor)return;
   const ins=off=>()=>{const nl={id:uid(),sp:off?nextSpeaker(ln.sp):ln.sp,text:''};sc.lines.splice(i+off,0,nl);renderScript();focusLine(nl.id,0);sync()};
-  const mv=dir=>()=>{const j=i+dir;if(j<0||j>=sc.lines.length)return;[sc.lines[i],sc.lines[j]]=[sc.lines[j],sc.lines[i]];renderScript();sync()};
-  sheet('この行',[pick,
-    item('↑ 上に行を挿入',ins(0)),item('↓ 下に行を挿入',ins(1)),
-    item('上へ移動',mv(-1)),item('下へ移動',mv(1)),
-    item('この行を削除',()=>{sc.lines.splice(i,1);if(!sc.lines.length)sc.lines.push({id:uid(),sp:sc.speakers[0].id,text:''});renderScript();sync()},{cls:'danger'})
-  ]);
+  popMenu(anchor,[
+    sc.speakers.map(s=>mi(null,s.name,()=>{ln.sp=s.id;refreshNames();sync()},{dot:s.color,check:s.id===ln.sp})),
+    [mi('above','上に行を挿入',ins(0)),mi('below','下に行を挿入',ins(1))],
+    [mi('trash','この行を削除',()=>{sc.lines.splice(i,1);if(!sc.lines.length)sc.lines.push({id:uid(),sp:sc.speakers[0].id,text:''});renderScript();sync()},{cls:'danger'})]
+  ],{left:true});
 }
-function openSpk(){
+function spkGroups(){
   const rows=sc.speakers.map(s=>{
     const row=document.createElement('div');row.className='sprow';
     const dot=document.createElement('button');dot.className='dot';dot.style.background=s.color;dot.setAttribute('aria-label','色を変更');
     dot.addEventListener('click',()=>{s.color=COLORS[(COLORS.indexOf(s.color)+1)%COLORS.length];dot.style.background=s.color;refreshNames();sync()});
-    const inp=document.createElement('input');inp.value=s.name;inp.placeholder='名前';
+    const inp=document.createElement('input');inp.value=s.name;inp.placeholder='名前';inp.dataset.sp=s.id;
     inp.addEventListener('input',()=>{s.name=cleanName(inp.value)||'?';refreshNames();sync()});
-    const del=document.createElement('button');del.className='tbtn';del.textContent='削除';
+    const del=document.createElement('button');del.className='sdel';del.setAttribute('aria-label','削除');
+    del.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>';
     del.addEventListener('click',()=>{
       if(sc.speakers.length<=1){toast('話者は1人以上必要です');return}
       const used=sc.lines.filter(l=>l.sp===s.id).length,rest=sc.speakers.filter(x=>x.id!==s.id);
       if(used&&!confirm(`「${s.name}」の${used}行は「${rest[0].name}」に変更されます。削除しますか？`))return;
-      sc.speakers=rest;sc.lines.forEach(l=>{if(l.sp===s.id)l.sp=rest[0].id});renderScript();sync();openSpk();
+      sc.speakers=rest;sc.lines.forEach(l=>{if(l.sp===s.id)l.sp=rest[0].id});renderScript();sync();renderPage(0);
     });
     row.append(dot,inp,del);return row;
   });
-  sheet('話者の編集',[...rows,item('＋ 話者を追加',()=>{
-    sc.speakers.push({id:uid(),name:freeName(),color:freeColor()});refreshNames();sync();openSpk();
-    const ins=$('#dlgList').querySelectorAll('input');ins[ins.length-1].select();
-  },{keep:true})]);
+  return[rows,[mi('plus','話者を追加',()=>{
+    const s={id:uid(),name:freeName(),color:freeColor()};sc.speakers.push(s);refreshNames();sync();
+    setTimeout(()=>pop&&pop.p.querySelector(`input[data-sp="${s.id}"]`)?.select(),0);
+  },{keep:true})]];
 }
+function openSpk(anchor){popMenu(anchor||$("#speakers .chip.plain"),spkGroups,{left:true})}
 
-/* ---------- シート ---------- */
-$dlg.addEventListener('click',e=>{if(e.target===$dlg||e.target.closest('[data-close]'))$dlg.close()});
-function sheet(title,nodes){$('#dlgTitle').textContent=title;$('#dlgList').replaceChildren(...nodes);if(!$dlg.open)$dlg.showModal()}
-function item(label,fn,opt={}){
-  const b=document.createElement('button');b.className='item'+(opt.cls?' '+opt.cls:'');
-  const s=document.createElement('span');s.textContent=label;b.append(s);
-  if(opt.small){const m=document.createElement('small');m.textContent=opt.small;b.append(m)}
-  b.addEventListener('click',()=>{if(!opt.keep)$dlg.close();fn()});return b;
-}
-function noteEl(text){const d=document.createElement('div');d.className='note';d.textContent=text;return d}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('on'),2200)}
 
 /* ---------- ポップオーバーメニュー（Liquid Glass 風） ---------- */
 const sv=d=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const MI={
+  above:sv('<path d="M12 20V8M7 13l5-5 5 5M5 4h14"/>'),
+  below:sv('<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>'),
+  plus:sv('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
+  restore:sv('<path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M4 4v4.5h4.5"/>'),
   share:sv('<path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/>'),
   backup:sv('<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>'),
   timer:sv('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/>'),
@@ -642,7 +631,7 @@ function closePop(now){
 function popItem(it){
   const b=document.createElement('button');b.className='pop-item'+(it.cls?' '+it.cls:'');b.setAttribute('role','menuitem');
   if(it.icon){const i=document.createElement('i');i.innerHTML=MI[it.icon]||'';b.append(i)}
-  else if(it.dot){const i=document.createElement('i');const d=document.createElement('span');d.className='sdot';d.style.background=it.dot;i.append(d);b.append(i)}
+  else if(it.dot){const i=document.createElement('i');const d=document.createElement('span');d.className='sdot'+(it.dot==='none'?' ring':'');if(it.dot!=='none')d.style.background=it.dot;i.append(d);b.append(i)}
   const t=document.createElement('span');t.className='pop-t';
   const l=document.createElement('span');l.textContent=it.label;t.append(l);
   if(it.small){const m=document.createElement('small');m.textContent=it.small;t.append(m)}
@@ -672,7 +661,7 @@ function renderPage(dir){
   });
   pop.p.replaceChildren(el);
 }
-function popMenu(anchor,groups){
+function popMenu(anchor,groups,opt={}){
   closePop(true);
   if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
   const scrim=document.createElement('div');scrim.className='pop-scrim';
@@ -681,7 +670,8 @@ function popMenu(anchor,groups){
   document.body.append(scrim,p);
   pop={p,scrim,stack:[{groups}]};renderPage(0);
   const r=anchor.getBoundingClientRect(),vw=document.documentElement.clientWidth,vh=innerHeight;
-  const right=Math.max(10,vw-r.right),h=p.offsetHeight;
+  const h=p.offsetHeight;
+  const right=opt.left?Math.max(10,vw-Math.max(r.left,10)-p.offsetWidth):Math.max(10,vw-r.right);
   // 下に入りきらなければ上に出す
   const up=r.bottom+6+h>vh-12&&r.top-6-h>12;
   p.style.right=right+'px';
@@ -740,7 +730,7 @@ function statusGroups(n){
   };
   return[
     Object.entries(STATUS).map(([k,[l,c]])=>mi(null,l,set(k),{dot:c,check:n.status===k})),
-    [mi(null,'なし',set(''),{check:!n.status})]
+    [mi(null,'なし',set(''),{dot:'none',check:!n.status})]
   ];
 }
 
@@ -755,7 +745,7 @@ $('#btnListMenu').addEventListener('click',e=>{
        mi('save','すべて .txt で書き出し',exportAllTxt,{small:'ファイルAppへ'}),
        mi('backup','バックアップを書き出し',exportBackup,{small:'.json（復元用）'})
      ]]})],
-    [mi('trash','最近削除した項目',openTrash,{small:nTrash?nTrash+'件':''}),
+    [mi('trash','最近削除した項目',null,{small:nTrash?nTrash+'件':'',sub:trashGroups}),
      mi('reload','最新版に更新',forceUpdate,{small:'メモは消えません'})]
   ]);
 });
@@ -775,17 +765,17 @@ $('#btnNoteMenu').addEventListener('click',e=>{
 });
 
 function trash(n){n.deleted=Date.now();n.pinned=false;notes[n.id]=n;persistNow();toast('「最近削除した項目」に移動しました')}
-function openTrash(){
+function trashGroups(){
   const arr=Object.values(notes).filter(n=>n.deleted).sort((a,b)=>b.deleted-a.deleted);
   const left=n=>Math.max(0,TRASH_DAYS-Math.floor((Date.now()-n.deleted)/DAY));
-  sheet('最近削除した項目',[
-    noteEl(`削除したメモは${TRASH_DAYS}日後に完全に削除されます。タップで復元できます。`),
-    ...arr.map(n=>item(titleOf(n).title,()=>sheet(titleOf(n).title,[
-      item('復元',()=>{delete n.deleted;persistNow();renderList();toast('復元しました')}),
-      item('完全に削除',()=>{if(!confirm('完全に削除しますか？元に戻せません。'))return;delete notes[n.id];persistNow()},{cls:'danger'})
-    ]),{small:`あと${left(n)}日`,keep:true})),
-    ...(arr.length?[item('すべて完全に削除',()=>{if(!confirm(`${arr.length}件を完全に削除しますか？元に戻せません。`))return;arr.forEach(n=>delete notes[n.id]);persistNow()},{cls:'danger'})]:[noteEl('ありません')])
-  ]);
+  if(!arr.length){const d=document.createElement('div');d.className='pop-empty';d.textContent='ありません';return[[d]]}
+  return[
+    arr.map(n=>mi(null,titleOf(n).title,null,{small:`あと${left(n)}日で完全に削除`,sub:()=>[[
+      mi('restore','復元',()=>{delete n.deleted;persistNow();renderList();toast('復元しました')}),
+      mi('trash','完全に削除',()=>{if(!confirm('完全に削除しますか？元に戻せません。'))return;delete notes[n.id];persistNow()},{cls:'danger'})
+    ]]})),
+    [mi('trash','すべて完全に削除',()=>{if(!confirm(`${arr.length}件を完全に削除しますか？元に戻せません。`))return;arr.forEach(n=>delete notes[n.id]);persistNow()},{cls:'danger'})]
+  ];
 }
 
 // アプリのファイルだけを取り直す（メモは localStorage にあるので消えない）
@@ -900,7 +890,7 @@ function enableSwipeBack(){
   const v=$('#vNote');let s=null;
   v.addEventListener('touchstart',e=>{
     const t=e.touches[0];
-    s=e.touches.length===1&&t.clientX<28&&!$dlg.open?{x:t.clientX,y:t.clientY,dx:0,on:false}:null;
+    s=e.touches.length===1&&t.clientX<28&&!pop?{x:t.clientX,y:t.clientY,dx:0,on:false}:null;
   },{passive:true});
   v.addEventListener('touchmove',e=>{
     if(!s)return;const t=e.touches[0],dx=t.clientX-s.x,dy=t.clientY-s.y;
