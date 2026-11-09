@@ -843,13 +843,6 @@ $('#file').addEventListener('change',async e=>{
   if(added.length===1&&!added[0].deleted)goNote(added[0]);else renderList();
 });
 
-/* ---------- 下の検索欄をキーボードの上に出す ---------- */
-if(window.visualViewport){
-  const vv=visualViewport,tb=$('.tb');
-  const f=()=>{const kb=Math.max(0,innerHeight-vv.height-vv.offsetTop);document.documentElement.style.setProperty('--kb',kb+'px');tb.classList.toggle('kb',kb>60)};
-  vv.addEventListener('resize',f);vv.addEventListener('scroll',f);
-}
-
 /* ---------- 起動 ---------- */
 (function init(){
   load();
