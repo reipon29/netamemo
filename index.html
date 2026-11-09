@@ -19,27 +19,29 @@
 <section id="vList">
   <header class="lh">
     <div class="lbar"><span class="spacer"></span>
-      <button class="tbtn" id="btnListMenu" aria-label="メニュー"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><circle cx="7.5" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="16.5" cy="12" r=".6" fill="currentColor"/></svg></button>
+      <button class="tbtn glass" id="btnListMenu" aria-label="メニュー"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
     </div>
     <h1>ネタメモ</h1>
-    <input id="q" type="search" placeholder="検索" autocomplete="off" enterkeyhint="search">
+    <div id="count"></div>
     <div id="filters" hidden></div>
   </header>
   <div id="notes"></div>
   <footer class="tb">
-    <span></span><span id="count"></span>
-    <button class="tbtn" id="btnNew" aria-label="新規メモ"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+    <label class="search glass"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><input id="q" type="search" placeholder="検索" autocomplete="off" enterkeyhint="search"></label>
+    <button class="tbtn glass" id="btnNew" aria-label="新規メモ"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
   </footer>
 </section>
 
 <section id="vNote" hidden>
   <header class="nh">
     <div class="nbar">
-      <button class="tbtn back" id="btnBack"><svg width="13" height="22" viewBox="0 0 13 22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2 2 11l9 9"/></svg>メモ</button>
+      <button class="tbtn glass" id="btnBack" aria-label="戻る"><svg width="12" height="20" viewBox="0 0 13 22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2 2 11l9 9"/></svg></button>
       <span class="spacer"></span>
-      <div class="seg" id="seg"><button data-m="memo">メモ</button><button data-m="script">台本</button></div>
-      <button class="tbtn" id="btnShare" aria-label="共有"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/></svg></button>
-      <button class="tbtn" id="btnNoteMenu" aria-label="メニュー"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><circle cx="7.5" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="16.5" cy="12" r=".6" fill="currentColor"/></svg></button>
+      <div class="seg glass" id="seg"><button data-m="memo">メモ</button><button data-m="script">台本</button></div>
+      <div class="gcap glass">
+        <button class="tbtn" id="btnShare" aria-label="共有"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5"/><path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"/></svg></button>
+        <button class="tbtn" id="btnNoteMenu" aria-label="メニュー"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+      </div>
     </div>
     <div id="spbar" hidden>
       <div id="speakers"></div>
@@ -48,7 +50,7 @@
         <button data-t="kakko" aria-label="丸括弧">（）</button>
       </div>
     </div>
-    <div id="pbar" hidden><span id="pinfo"></span><button id="pAll">全部めくる</button><button id="pEnd">終了</button></div>
+    <div id="pbar" hidden><span id="pinfo"></span><button id="pTime" aria-label="タイマー"></button><button id="pAll">全部表示</button><button id="pEnd">終了</button></div>
   </header>
   <div id="ndate"></div>
   <textarea id="memo" class="ta" placeholder="メモを入力" autocomplete="off"></textarea>

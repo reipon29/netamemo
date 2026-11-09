@@ -213,6 +213,19 @@ function renderList(){
   }));
   if(!arr.length){const e=document.createElement('div');e.className='empty';e.textContent=q?`「${$q.value.trim()}」を含むメモはありません`:prefs.filter?`「${STATUS[prefs.filter][0]}」のメモはありません`:'メモはありません\n右下のボタンで作成';e.style.whiteSpace='pre-line';$notes.append(e)}
   $('#count').textContent=all.length?`${all.length}件のメモ`:'';
+  backupNudge(all);
+}
+// 前回のバックアップから30日たったら、一覧の先頭にそっと出す
+function backupNudge(all){
+  if(!all.length)return;
+  const now=Date.now(),base=prefs.lastBackup||Math.min(...all.map(n=>n.created||now));
+  if(now-base<30*DAY||prefs.bkSnooze&&now-prefs.bkSnooze<7*DAY)return;
+  const d=document.createElement('div');d.className='bk glass';
+  const t=document.createElement('span');t.textContent=prefs.lastBackup?`最後のバックアップから${Math.floor((now-base)/DAY)}日たちました`:'バックアップしておきましょう';
+  const go=document.createElement('button');go.className='go';go.textContent='書き出す';go.addEventListener('click',exportBackup);
+  const x=document.createElement('button');x.className='x';x.setAttribute('aria-label','閉じる');x.textContent='✕';
+  x.addEventListener('click',()=>{prefs.bkSnooze=now;savePrefs();d.remove()});
+  d.append(t,go,x);$notes.prepend(d);
 }
 function renderFilters(all){
   const box=$('#filters'),cnt={};
@@ -412,8 +425,59 @@ $script.addEventListener('keydown',e=>{
 });
 $script.addEventListener('click',e=>{
   if(prac){const t=e.target.closest('.text');if(t&&(t.classList.contains('mask')||t.classList.contains('peek'))){t.classList.toggle('mask');t.classList.toggle('peek');updPbar()}return}
+  if(dragDone){dragDone=false;return}
   const b=e.target.closest('.name');if(b)openLine(b.dataset.id);
 });
+
+/* ---------- 話者名を長押しして上下に動かすと、行を並べ替え ---------- */
+let drag=null,dragHold=null,dragDone=false;
+$script.addEventListener('pointerdown',e=>{
+  const b=e.target.closest('.name');if(!b||prac||!e.isPrimary)return;
+  dragDone=false;const x=e.clientX,y=e.clientY,pid=e.pointerId;
+  dragHold={x,y,t:setTimeout(()=>{dragHold=null;startDrag(b,x,y,pid)},420)};
+});
+$script.addEventListener('pointermove',e=>{
+  if(dragHold&&Math.hypot(e.clientX-dragHold.x,e.clientY-dragHold.y)>8){clearTimeout(dragHold.t);dragHold=null}
+  if(drag){drag.x=e.clientX;drag.y=e.clientY;placeDrag()}
+});
+['pointerup','pointercancel'].forEach(ev=>$script.addEventListener(ev,()=>{
+  if(dragHold){clearTimeout(dragHold.t);dragHold=null}
+  if(drag)endDrag(ev==='pointercancel');
+}));
+$script.addEventListener('touchmove',e=>{if(drag)e.preventDefault()},{passive:false});
+function startDrag(b,x,y,pid){
+  const id=b.dataset.id,ln=sc.lines[idx(id)];if(!ln)return;
+  if(document.activeElement)document.activeElement.blur();
+  try{b.setPointerCapture(pid)}catch{}
+  dragDone=true;
+  const ind=document.createElement('div');ind.className='drop';$script.append(ind);
+  const g=document.createElement('div');g.className='ghost glass';
+  const nm=document.createElement('b');nm.textContent=spk(ln.sp).name;nm.style.color=spk(ln.sp).color;
+  const tx=document.createElement('span');tx.textContent=ln.text.split('\n')[0]||'（空の行）';
+  g.append(nm,tx);document.body.append(g);
+  nameOf(id).classList.add('drag');taOf(id).classList.add('drag');
+  if(navigator.vibrate)navigator.vibrate(10);
+  drag={id,ind,g,x,y,to:idx(id)};
+  // 画面の端に近づいたら自動でスクロール
+  drag.iv=setInterval(()=>{if(!drag)return;const d=drag.y<140?-8:drag.y>innerHeight-90?8:0;if(d){scrollBy(0,d);placeDrag()}},16);
+  placeDrag();
+}
+function placeDrag(){
+  const ids=sc.lines.map(l=>l.id);let to=ids.length;
+  for(let i=0;i<ids.length;i++){const r=taOf(ids[i]).getBoundingClientRect();if(drag.y<r.top+r.height/2){to=i;break}}
+  drag.to=to;
+  const top=to<ids.length?taOf(ids[to]).getBoundingClientRect().top:taOf(ids[ids.length-1]).getBoundingClientRect().bottom;
+  drag.ind.style.top=(top-$script.getBoundingClientRect().top-1.5)+'px';
+  drag.g.style.transform=`translate(${Math.min(innerWidth-drag.g.offsetWidth-12,Math.max(12,drag.x-40))}px,${drag.y-50}px)`;
+}
+function endDrag(cancel){
+  const d=drag;drag=null;clearInterval(d.iv);d.ind.remove();d.g.remove();
+  nameOf(d.id)?.classList.remove('drag');taOf(d.id)?.classList.remove('drag');
+  if(cancel)return;
+  const from=idx(d.id);let to=d.to;if(to>from)to--;
+  if(to===from||from<0)return;
+  const[ln]=sc.lines.splice(from,1);sc.lines.splice(to,0,ln);renderScript();sync();
+}
 $script.addEventListener('mousedown',e=>{if(prac)e.preventDefault()});
 
 /* ---------- 練習モード：選んだ話者のセリフを隠す。タップでめくる ---------- */
@@ -421,11 +485,11 @@ let prac=null;
 const practiceGroups=()=>[sc.speakers.map(s=>mi(null,s.name,()=>startPractice(s.id),{dot:s.color}))];
 function startPractice(sp){
   if(document.activeElement)document.activeElement.blur();
-  prac={sp};$('#vNote').classList.add('practice');$('#pbar').hidden=false;
+  prac={sp};$('#vNote').classList.add('practice');$('#pbar').hidden=false;tmReset();
   renderScript();updPbar();
 }
 function endPractice(render=true){
-  if(!prac)return;prac=null;
+  if(!prac)return;prac=null;tmReset();
   $('#vNote').classList.remove('practice');$('#pbar').hidden=true;
   if(render&&sc)renderScript();
 }
@@ -435,7 +499,7 @@ function updPbar(){
   const n=$('#pinfo');n.replaceChildren();
   const b=document.createElement('b');b.textContent=s.name;b.style.color=s.color;
   n.append(b,`のセリフ ${all-hid}/${all}`);
-  $('#pAll').textContent=hid?'全部めくる':'全部隠す';
+  $('#pAll').textContent=hid?'全部表示':'全部隠す';
 }
 $('#pAll').addEventListener('click',()=>{
   const hid=$script.querySelectorAll('.text.mask').length;
@@ -443,6 +507,24 @@ $('#pAll').addEventListener('click',()=>{
   updPbar();
 });
 $('#pEnd').addEventListener('click',()=>endPractice());
+// 通し練習のタイマー：タップで開始・一時停止、長押しでリセット
+const tm={start:0,acc:0,iv:null};
+const PLAY='<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><path d="M1 1.2v9.6a.6.6 0 0 0 .9.5l7.6-4.8a.6.6 0 0 0 0-1L1.9.7a.6.6 0 0 0-.9.5z"/></svg>';
+const PAUSE='<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor"><rect x="1" y="1" width="2.8" height="10" rx=".8"/><rect x="6.2" y="1" width="2.8" height="10" rx=".8"/></svg>';
+function tmDraw(){
+  const s=Math.floor((tm.acc+(tm.iv?Date.now()-tm.start:0))/1000),b=$('#pTime');
+  b.innerHTML=(tm.iv?PAUSE:PLAY)+`<span>${Math.floor(s/60)}:${p2(s%60)}</span>`;b.classList.toggle('run',!!tm.iv);
+}
+function tmReset(){clearInterval(tm.iv);tm.iv=null;tm.acc=0;tmDraw()}
+let tmHold=null,tmHeld=false;
+$('#pTime').addEventListener('pointerdown',()=>{tmHeld=false;tmHold=setTimeout(()=>{tmHeld=true;tmReset();toast('タイマーをリセットしました')},600)});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>$('#pTime').addEventListener(ev,()=>clearTimeout(tmHold)));
+$('#pTime').addEventListener('click',()=>{
+  if(tmHeld){tmHeld=false;return}
+  if(tm.iv){tm.acc+=Date.now()-tm.start;clearInterval(tm.iv);tm.iv=null}
+  else{tm.start=Date.now();tm.iv=setInterval(tmDraw,250)}
+  tmDraw();
+});
 
 let wasEditing=false;
 $('#speakers').addEventListener('pointerdown',e=>{wasEditing=!!document.activeElement&&document.activeElement.classList.contains('text');if(e.target.closest('.chip'))e.preventDefault()});
@@ -545,7 +627,6 @@ const MI={
   reload:sv('<path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/>'),
   pin:sv('<path d="M9 3.5h6l-1 6 3.5 3.5h-11L10 9.5z"/><path d="M12 13v7.5"/>'),
   copy:sv('<rect x="8" y="8" width="12" height="13" rx="2.5"/><path d="M16 8V5.5A2.5 2.5 0 0 0 13.5 3h-7A2.5 2.5 0 0 0 4 5.5v8A2.5 2.5 0 0 0 6.5 16H8"/>'),
-  replace:sv('<path d="M4 8h13M13.5 4.5 17 8l-3.5 3.5"/><path d="M20 16H7M10.5 12.5 7 16l3.5 3.5"/>'),
   save:sv('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9.5 14.5 12 17l2.5-2.5"/>'),
   dup:sv('<rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M14 11.5v5M11.5 14h5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/>')
 };
@@ -689,11 +770,6 @@ $('#btnNoteMenu').addEventListener('click',e=>{
     [mi('copy','テキストをコピー',async()=>{try{await navigator.clipboard.writeText(n.text);toast('コピーしました')}catch{toast('コピーできませんでした')}}),
      mi('save','.txt ファイルで保存',()=>saveFiles([new File([n.text],fileBase(n)+'.txt',{type:'text/plain'})])),
      mi('dup','複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();history.replaceState(null,'','#/n/'+c.id);openNote(c);toast('複製しました')})],
-    [mi('replace','クリップボードで置き換え',async()=>{
-       const t=await readClip();if(t==null)return;
-       if(n.text.trim()&&!confirm('このメモの内容を、クリップボードの内容で置き換えますか？'))return;
-       n.text=t;touch(n);persistNow();setMode(n.mode);toast('置き換えました');
-     })],
     [mi('trash','削除',()=>{if(!n.text.trim()){goList();return}trash(n);goList()},{cls:'danger'})]
   ]);
 });
@@ -741,7 +817,8 @@ async function readClip(){
 async function saveFiles(files){
   // 共有シート →「ファイルに保存」でファイルAppへ
   if(!(navigator.canShare&&navigator.canShare({files}))){toast('この端末ではファイルを書き出せません');return}
-  try{await navigator.share({files})}catch(e){if(e.name!=='AbortError')toast('書き出せませんでした')}
+  try{await navigator.share({files});return true}catch(e){if(e.name!=='AbortError')toast('書き出せませんでした')}
+  return false;
 }
 const stamp=()=>{const d=new Date();return`${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}`};
 function exportAllTxt(){
@@ -751,7 +828,7 @@ function exportAllTxt(){
 }
 function exportBackup(){
   const arr=live();if(!arr.length){toast('メモがありません');return}
-  saveFiles([new File([JSON.stringify({app:'netamemo',version:1,notes:arr},null,1)],`ネタメモ_バックアップ_${stamp()}.json`,{type:'application/json'})]);
+  saveFiles([new File([JSON.stringify({app:'netamemo',version:1,notes:arr},null,1)],`ネタメモ_バックアップ_${stamp()}.json`,{type:'application/json'})]).then(ok=>{if(ok){prefs.lastBackup=Date.now();delete prefs.bkSnooze;savePrefs();if(!$('#vList').hidden)renderList()}});
 }
 $('#file').addEventListener('change',async e=>{
   const files=[...e.target.files];e.target.value='';if(!files.length)return;
@@ -775,6 +852,13 @@ $('#file').addEventListener('change',async e=>{
   else toast(added.length?`${added.length}件読み込みました`:'新しいメモはありませんでした');
   if(added.length===1&&!added[0].deleted)goNote(added[0]);else renderList();
 });
+
+/* ---------- 下の検索欄をキーボードの上に出す ---------- */
+if(window.visualViewport){
+  const vv=visualViewport,tb=$('.tb');
+  const f=()=>{const kb=Math.max(0,innerHeight-vv.height-vv.offsetTop);document.documentElement.style.setProperty('--kb',kb+'px');tb.classList.toggle('kb',kb>60)};
+  vv.addEventListener('resize',f);vv.addEventListener('scroll',f);
+}
 
 /* ---------- 起動 ---------- */
 (function init(){
