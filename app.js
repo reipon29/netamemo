@@ -337,7 +337,7 @@ function rowMenu(id){
   popMenu(row,[
     [mi('pin',n.pinned?'ピン留めを解除':'ピン留め',()=>{n.pinned=!n.pinned;persistNow();renderList()}),
      mi('flag','ステータス',null,{small:STATUS[n.status]?.[0]||'なし',sub:()=>statusGroups(n)})],
-    [mi('share','共有',()=>shareText(n)),
+    [mi('notes','iPhoneの「メモ」へ送る',()=>shareText(n)),
      mi('dup','複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();renderList();toast('複製しました')})],
     [mi('trash','削除',()=>{trash(n);renderList()},{cls:'danger'})]
   ]);
@@ -367,7 +367,7 @@ function rowEls(ln){
   const c=document.createElement('span');c.textContent='：';
   b.append(n,c);
   const t=document.createElement('textarea');t.className='text';t.rows=1;t.value=ln.text;t.dataset.id=ln.id;t.setAttribute('enterkeyhint','next');
-  if(prac){t.readOnly=true;t.tabIndex=-1;if(ln.sp===prac.sp&&ln.text.trim())t.classList.add('mask')}
+  if(prac){t.readOnly=true;t.tabIndex=-1;if((prac.sp==='*'||ln.sp===prac.sp)&&ln.text.trim())t.classList.add('mask')}
   return[b,t];
 }
 function renderScript(){
@@ -482,7 +482,7 @@ $script.addEventListener('mousedown',e=>{if(prac)e.preventDefault()});
 
 /* ---------- 練習モード：選んだ話者のセリフを隠す。タップでめくる ---------- */
 let prac=null;
-const practiceGroups=()=>[sc.speakers.map(s=>mi(null,s.name,()=>startPractice(s.id),{dot:s.color}))];
+const practiceGroups=()=>[[mi('eye','全員',()=>startPractice('*'),{small:'すべてのセリフを隠す'})],sc.speakers.map(s=>mi(null,s.name,()=>startPractice(s.id),{dot:s.color}))];
 function startPractice(sp){
   if(document.activeElement)document.activeElement.blur();
   prac={sp};$('#vNote').classList.add('practice');$('#pbar').hidden=false;tmReset();
@@ -494,7 +494,7 @@ function endPractice(render=true){
   if(render&&sc)renderScript();
 }
 function updPbar(){
-  if(!prac)return;const s=spk(prac.sp);
+  if(!prac)return;const s=prac.sp==='*'?{name:'全員',color:'var(--fg)'}:spk(prac.sp);
   const hid=$script.querySelectorAll('.text.mask').length,all=hid+$script.querySelectorAll('.text.peek').length;
   const n=$('#pinfo');n.replaceChildren();
   const b=document.createElement('b');b.textContent=s.name;b.style.color=s.color;
@@ -599,6 +599,7 @@ function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');
 /* ---------- ポップオーバーメニュー（Liquid Glass 風） ---------- */
 const sv=d=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const MI={
+  notes:sv('<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M4 8h16M8 12.5h8M8 16h5"/>'),
   above:sv('<path d="M12 20V8M7 13l5-5 5 5M5 4h14"/>'),
   below:sv('<path d="M12 4v12M7 11l5 5 5-5M5 20h14"/>'),
   plus:sv('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
@@ -757,7 +758,8 @@ $('#btnNoteMenu').addEventListener('click',e=>{
      mi('flag','ステータス',null,{small:STATUS[n.status]?.[0]||'なし',sub:()=>statusGroups(n)})],
     [mi('timer','読み上げ時間',null,{small:'約'+fmtDur(noteChars(n)),sub:timeGroups}),
      ...(n.mode==='script'?[prac?mi('eye','練習モードを終了',()=>endPractice()):mi('eye','練習モード',null,{small:'セリフを隠して覚える',subTitle:'隠す話者',sub:practiceGroups})]:[])],
-    [mi('copy','テキストをコピー',async()=>{try{await navigator.clipboard.writeText(n.text);toast('コピーしました')}catch{toast('コピーできませんでした')}}),
+    [mi('notes','iPhoneの「メモ」へ送る',()=>shareText(n)),
+     mi('copy','テキストをコピー',async()=>{try{await navigator.clipboard.writeText(n.text);toast('コピーしました')}catch{toast('コピーできませんでした')}}),
      mi('save','.txt ファイルで保存',()=>saveFiles([new File([n.text],fileBase(n)+'.txt',{type:'text/plain'})])),
      mi('dup','複製',()=>{const c={...structuredClone(n),id:uid(),pinned:false,created:Date.now()};touch(c);persistNow();history.replaceState(null,'','#/n/'+c.id);openNote(c);toast('複製しました')})],
     [mi('trash','削除',()=>{if(!n.text.trim()){goList();return}trash(n);goList()},{cls:'danger'})]
