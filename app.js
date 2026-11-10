@@ -367,7 +367,7 @@ function rowEls(ln){
   const c=document.createElement('span');c.textContent='：';
   b.append(n,c);
   const t=document.createElement('textarea');t.className='text';t.rows=1;t.value=ln.text;t.dataset.id=ln.id;t.setAttribute('enterkeyhint','next');
-  if(prac){t.readOnly=true;t.tabIndex=-1;if((prac.sp==='*'||ln.sp===prac.sp)&&ln.text.trim())t.classList.add('mask')}
+  if(prac){t.readOnly=true;t.tabIndex=-1;if(ln.sp===prac.sp&&ln.text.trim())t.classList.add('mask')}
   return[b,t];
 }
 function renderScript(){
@@ -482,7 +482,7 @@ $script.addEventListener('mousedown',e=>{if(prac)e.preventDefault()});
 
 /* ---------- 練習モード：選んだ話者のセリフを隠す。タップでめくる ---------- */
 let prac=null;
-const practiceGroups=()=>[[mi('eye','全員',()=>startPractice('*'),{small:'すべてのセリフを隠す'})],sc.speakers.map(s=>mi(null,s.name,()=>startPractice(s.id),{dot:s.color}))];
+const practiceGroups=()=>[[mi('timer','隠さない',()=>startPractice('*'),{small:'タイマーだけ使う'})],sc.speakers.map(s=>mi(null,s.name,()=>startPractice(s.id),{dot:s.color}))];
 function startPractice(sp){
   if(document.activeElement)document.activeElement.blur();
   prac={sp};$('#vNote').classList.add('practice');$('#pbar').hidden=false;tmReset();
@@ -494,7 +494,10 @@ function endPractice(render=true){
   if(render&&sc)renderScript();
 }
 function updPbar(){
-  if(!prac)return;const s=prac.sp==='*'?{name:'全員',color:'var(--fg)'}:spk(prac.sp);
+  if(!prac)return;
+  $('#pAll').hidden=prac.sp==='*';
+  if(prac.sp==='*'){$('#pinfo').textContent='通し練習';return}
+  const s=spk(prac.sp);
   const hid=$script.querySelectorAll('.text.mask').length,all=hid+$script.querySelectorAll('.text.peek').length;
   const n=$('#pinfo');n.replaceChildren();
   const b=document.createElement('b');b.textContent=s.name;b.style.color=s.color;
